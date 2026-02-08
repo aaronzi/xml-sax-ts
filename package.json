@@ -3,6 +3,10 @@
   "version": "0.1.1",
   "description": "One-pass, streaming (SAX-style) XML parser for TypeScript (Node.js & browsers)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aaronzi/xml-sax-ts"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
