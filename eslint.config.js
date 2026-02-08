@@ -27,6 +27,8 @@ export default [
       }
     },
     rules: {
+      "linebreak-style": ["error", "unix"],
+      "indent": ["error", 2, { "SwitchCase": 1 }],
       "@typescript-eslint/consistent-type-imports": ["error", { "prefer": "type-imports" }],
       "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }],
       "@typescript-eslint/explicit-module-boundary-types": "error",

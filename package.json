@@ -23,6 +23,8 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration",
+    "test:fuzz": "vitest run tests/fuzz",
     "lint": "eslint . && tsc -p tsconfig.json --noEmit",
     "lint:eslint": "eslint .",
     "lint:fix": "eslint . --fix"
@@ -31,6 +33,7 @@
     "@types/node": "^25.2.2",
     "@eslint/js": "^9.39.2",
     "eslint": "^9.39.2",
+    "fast-check": "^4.5.3",
     "tsup": "^8.0.0",
     "typescript-eslint": "^8.54.0",
     "typescript": "^5.6.0",

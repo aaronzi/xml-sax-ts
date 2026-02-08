@@ -1,3 +1,7 @@
 # Tests
 
-Tests are written with Vitest. Run them with `npm test`.
+Tests are written with Vitest.
+
+- Full suite: `npm test`
+- Integration: `npm run test:integration`
+- Fuzz: `npm run test:fuzz`

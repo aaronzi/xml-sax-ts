@@ -97,6 +97,7 @@ export class XmlSaxParser {
           this._emitText(text);
           this._advance(text);
         }
+        i = lt;
       }
 
       const consumed = this._parseMarkupFrom(lt, final);
