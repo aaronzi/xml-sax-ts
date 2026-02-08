@@ -36,6 +36,9 @@ const DEFAULT_OPTIONS: Required<Pick<ParserOptions, "xmlns" | "includeNamespaceA
   allowDoctype: true
 };
 
+const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
+const XMLNS_NAMESPACE_URI = "http://www.w3.org/2000/xmlns/";
+
 export class XmlSaxParser {
   private options: ParserOptions;
   private buffer = "";
@@ -43,8 +46,14 @@ export class XmlSaxParser {
   private line = 1;
   private column = 1;
   private elementStack: StackEntry[] = [];
-  private nsStack: NamespaceMap[] = [Object.create(null) as NamespaceMap];
+  private nsStack: NamespaceMap[] = [
+    Object.assign(Object.create(null) as NamespaceMap, {
+      xml: XML_NAMESPACE_URI,
+      xmlns: XMLNS_NAMESPACE_URI
+    })
+  ];
   private closed = false;
+  private pendingCR = false;
 
   constructor(options: ParserOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -66,6 +75,7 @@ export class XmlSaxParser {
       return;
     }
     this._parseBuffer(true);
+    this._flushPendingCR();
     if (this.buffer.length > 0) {
       this._error("Unexpected end of input");
     }
@@ -84,7 +94,7 @@ export class XmlSaxParser {
         const tail = this.buffer.slice(i);
         const split = splitTextForEntities(tail);
         if (split.emit.length > 0) {
-          this._emitText(split.emit);
+          this._emitText(split.emit, true);
           this._advance(split.emit);
         }
         this.buffer = split.carry;
@@ -94,7 +104,7 @@ export class XmlSaxParser {
       if (lt > i) {
         const text = this.buffer.slice(i, lt);
         if (text.length > 0) {
-          this._emitText(text);
+          this._emitText(text, false);
           this._advance(text);
         }
         i = lt;
@@ -120,6 +130,8 @@ export class XmlSaxParser {
   private _parseMarkupFrom(start: number, final: boolean): number | null {
     assert(this.buffer[start] === "<", "Markup must start with '<'");
 
+    this._flushPendingCR();
+
     if (this.buffer.startsWith("<!--", start)) {
       const end = this.buffer.indexOf("-->", start + 4);
       if (end === -1) {
@@ -142,7 +154,10 @@ export class XmlSaxParser {
         return null;
       }
       const cdata = this.buffer.slice(start + 9, end);
-      this.options.onCdata?.(cdata);
+      const normalized = this._normalizeText(cdata, false);
+      if (normalized.length > 0) {
+        this.options.onCdata?.(normalized);
+      }
       return end + 3 - start;
     }
 
@@ -237,7 +252,7 @@ export class XmlSaxParser {
           continue;
         }
       }
-      const resolvedAttr = this._resolveName(attr.name, ns);
+      const resolvedAttr = this._resolveAttributeName(attr.name, ns);
       attributes[resolvedAttr.name] = {
         name: resolvedAttr.name,
         value: attr.value,
@@ -332,7 +347,8 @@ export class XmlSaxParser {
         this._error("Unterminated attribute value");
       }
       const rawValue = body.slice(i, valueEnd);
-      const value = decodeEntities(rawValue, this.options.onError);
+      const normalized = rawValue.replace(/\r\n?/g, "\n");
+      const value = decodeEntities(normalized, this.options.onError);
       attributes.push({ name: attrName.name, value });
       i = valueEnd + 1;
     }
@@ -340,8 +356,12 @@ export class XmlSaxParser {
     return { name: parsedName.name, attributes };
   }
 
-  private _emitText(text: string): void {
-    const decoded = decodeEntities(text, this.options.onError);
+  private _emitText(text: string, allowPendingCR: boolean): void {
+    const normalized = this._normalizeText(text, allowPendingCR);
+    if (normalized.length === 0) {
+      return;
+    }
+    const decoded = decodeEntities(normalized, this.options.onError);
     if (decoded.length > 0) {
       this.options.onText?.(decoded);
     }
@@ -373,11 +393,54 @@ export class XmlSaxParser {
 
     const prefix = rawName.slice(0, split);
     const local = rawName.slice(split + 1);
+    const uri = ns[prefix];
+    if (uri === undefined) {
+      this._error(`Undeclared namespace prefix: ${prefix}`);
+    }
     return {
       name: rawName,
       prefix,
       local,
-      uri: ns[prefix] ?? ""
+      uri
+    };
+  }
+
+  private _resolveAttributeName(rawName: string, ns: NamespaceMap): ResolvedName {
+    if (!this.options.xmlns) {
+      return this._resolveName(rawName, ns);
+    }
+
+    if (rawName === "xmlns") {
+      return {
+        name: rawName,
+        prefix: "",
+        local: rawName,
+        uri: ns.xmlns ?? XMLNS_NAMESPACE_URI
+      };
+    }
+
+    const split = rawName.indexOf(":");
+    if (split === -1) {
+      return {
+        name: rawName,
+        prefix: "",
+        local: rawName,
+        uri: ""
+      };
+    }
+
+    const prefix = rawName.slice(0, split);
+    const local = rawName.slice(split + 1);
+    const uri = ns[prefix];
+    if (uri === undefined) {
+      this._error(`Undeclared namespace prefix: ${prefix}`);
+    }
+
+    return {
+      name: rawName,
+      prefix,
+      local,
+      uri
     };
   }
 
@@ -494,6 +557,39 @@ export class XmlSaxParser {
     const newlineCount = text.split("\n").length - 1;
     this.line += newlineCount;
     this.column = text.length - lastNewline;
+  }
+
+  private _normalizeText(text: string, allowPendingCR: boolean): string {
+    if (!text) {
+      return "";
+    }
+
+    let value = text;
+    let prefix = "";
+
+    if (this.pendingCR) {
+      prefix = "\n";
+      if (value.startsWith("\n")) {
+        value = value.slice(1);
+      }
+      this.pendingCR = false;
+    }
+
+    if (allowPendingCR && value.endsWith("\r")) {
+      this.pendingCR = true;
+      value = value.slice(0, -1);
+    }
+
+    const normalized = value.replace(/\r\n?/g, "\n");
+    return `${prefix}${normalized}`;
+  }
+
+  private _flushPendingCR(): void {
+    if (!this.pendingCR) {
+      return;
+    }
+    this.pendingCR = false;
+    this.options.onText?.("\n");
   }
 
   private _error(message: string): never {

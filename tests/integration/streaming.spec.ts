@@ -36,4 +36,41 @@ describe("streaming behavior", () => {
     const boundary = collectEvents(xml, 1);
     expect(boundary).toEqual(single);
   });
+
+  it("handles chunked markup sections", () => {
+    const events: string[] = [];
+    const parser = new XmlSaxParser({
+      onComment: (text) => events.push(`comment:${text}`),
+      onCdata: (text) => events.push(`cdata:${text}`),
+      onProcessingInstruction: (pi) => events.push(`pi:${pi.target}:${pi.body}`),
+      onDoctype: (dt) => events.push(`doctype:${dt.raw}`),
+      onOpenTag: (tag) => events.push(`open:${tag.name}`),
+      onCloseTag: (tag) => events.push(`close:${tag.name}`)
+    });
+
+    const chunks = [
+      "<?",
+      "xml version='1.0'?>",
+      "<!DOC",
+      "TYPE root>",
+      "<root><!--co",
+      "mment--><![CDATA[te",
+      "xt]]><?pi data?></root>"
+    ];
+
+    for (const chunk of chunks) {
+      parser.feed(chunk);
+    }
+    parser.close();
+
+    expect(events).toEqual([
+      "pi:xml:version='1.0'",
+      "doctype:root",
+      "open:root",
+      "comment:comment",
+      "cdata:text",
+      "pi:pi:data",
+      "close:root"
+    ]);
+  });
 });

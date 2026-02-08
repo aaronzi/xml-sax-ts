@@ -32,10 +32,10 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
 
     if (entity.startsWith("#x") || entity.startsWith("#X")) {
       const codePoint = Number.parseInt(entity.slice(2), 16);
-      decoded = Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : undefined;
+      decoded = decodeCodePoint(codePoint);
     } else if (entity.startsWith("#")) {
       const codePoint = Number.parseInt(entity.slice(1), 10);
-      decoded = Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : undefined;
+      decoded = decodeCodePoint(codePoint);
     } else {
       decoded = NAMED_ENTITIES[entity];
     }
@@ -51,6 +51,19 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
   }
 
   return output;
+}
+
+function decodeCodePoint(codePoint: number): string | undefined {
+  if (!Number.isFinite(codePoint)) {
+    return undefined;
+  }
+  if (codePoint < 0 || codePoint > 0x10ffff) {
+    return undefined;
+  }
+  if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+    return undefined;
+  }
+  return String.fromCodePoint(codePoint);
 }
 
 export function splitTextForEntities(text: string): { emit: string; carry: string } {
