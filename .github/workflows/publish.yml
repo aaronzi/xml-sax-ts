@@ -11,8 +11,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -33,12 +31,5 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Publish to npm (token, first-time)
-        if: ${{ env.NPM_TOKEN != '' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
-        run: npm publish
-
       - name: Publish to npm (OIDC)
-        if: ${{ env.NPM_TOKEN == '' }}
         run: npm publish --provenance
