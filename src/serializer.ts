@@ -36,6 +36,11 @@ function serializeNode(node: XmlNode, options: Required<SerializeOptions>, depth
   }
 
   const indent = options.indent.repeat(depth);
+  const hasOnlyTextChildren = children.every((child) => typeof child === "string");
+  if (hasOnlyTextChildren) {
+    const inlineText = children.map((child) => escapeText(child)).join("");
+    return `${indent}${tagOpen}${inlineText}${tagClose}`;
+  }
   const innerIndent = options.indent.repeat(depth + 1);
   const prettyOpen = `${indent}${tagOpen}`;
   const prettyClose = `${indent}${tagClose}`;

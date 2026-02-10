@@ -21,6 +21,6 @@ describe("serializeXml", () => {
       { pretty: true, indent: "  ", newline: "\n" }
     );
 
-    expect(xml).toBe("<root>\n  <child>\n    Text\n  </child>\n</root>");
+    expect(xml).toBe("<root>\n  <child>Text</child>\n</root>");
   });
 });
