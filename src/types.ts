@@ -65,3 +65,19 @@ export interface SerializeOptions {
   indent?: string;
   newline?: string;
 }
+
+export type ArrayElementSelector = Set<string> | ((name: string, path: string[]) => boolean);
+
+export interface ObjectBuilderOptions {
+  attributePrefix?: string;
+  textKey?: string;
+  stripNamespaces?: boolean;
+  arrayElements?: ArrayElementSelector;
+  coalesceText?: boolean;
+}
+
+export type XmlObjectValue = string | XmlObjectMap | XmlObjectValue[];
+
+export interface XmlObjectMap {
+  [key: string]: XmlObjectValue;
+}

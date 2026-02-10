@@ -51,6 +51,37 @@ const root = parseXmlString("<root><a>1</a><b/></root>");
 console.log(root.name); // "root"
 ```
 
+### Project to plain objects
+
+```ts
+import { buildObject, parseXmlString } from "xml-sax-ts";
+
+const root = parseXmlString("<root id='1'><item>1</item><item>2</item></root>");
+const obj = buildObject(root);
+// { "@_id": "1", item: ["1", "2"] }
+```
+
+### Streaming object builder
+
+```ts
+import { ObjectBuilder, XmlSaxParser } from "xml-sax-ts";
+
+const builder = new ObjectBuilder();
+const parser = new XmlSaxParser({
+  onOpenTag: builder.onOpenTag,
+  onText: builder.onText,
+  onCdata: builder.onCdata,
+  onCloseTag: builder.onCloseTag
+});
+
+parser.feed("<root><item>1</item>");
+parser.feed("<item>2</item></root>");
+parser.close();
+
+const obj = builder.getResult();
+// { item: ["1", "2"] }
+```
+
 ### Serialize to XML
 
 ```ts
@@ -108,6 +139,24 @@ Convenience function that parses a complete XML string into an `XmlNode` tree us
 
 Low-level tree builder. Attach its `onOpenTag`, `onText`, `onCdata`, and `onCloseTag` methods to a parser, then call `getRoot()` to retrieve the resulting `XmlNode`.
 
+### `buildObject(root, options?)`
+
+Projects an `XmlNode` tree into a plain object. Attributes are prefixed (default `@_`), text is stored under `#text`, repeated elements are arrays, and elements with only text return the text directly.
+
+### `ObjectBuilder`
+
+Streaming builder that produces the same object shape as `buildObject` without building a full `XmlNode` tree. Attach its `onOpenTag`, `onText`, `onCdata`, and `onCloseTag` methods to the parser.
+
+#### `ObjectBuilderOptions`
+
+| Option             | Type                                                         | Default   | Description                                    |
+| ------------------ | ------------------------------------------------------------ | --------- | ---------------------------------------------- |
+| `attributePrefix`  | `string`                                                     | `"@_"`    | Prefix for attribute keys                      |
+| `textKey`          | `string`                                                     | `"#text"` | Key used for text nodes                        |
+| `stripNamespaces`  | `boolean`                                                    | `false`   | Strip namespace prefixes from names            |
+| `arrayElements`    | `Set\<string\> \| (name: string, path: string[]) => boolean` | —         | Force specific elements to always be arrays    |
+| `coalesceText`     | `boolean`                                                    | `true`    | Merge adjacent text nodes into a single string |
+
 ### `serializeXml(node, options?)`
 
 Serializes an `XmlNode` back to an XML string.
@@ -127,7 +176,7 @@ Custom error class thrown on parse errors. Includes `offset`, `line`, and `colum
 
 ### Exported types
 
-`OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `ParserOptions` · `SerializeOptions`
+`OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `ParserOptions` · `SerializeOptions` · `ObjectBuilderOptions` · `ArrayElementSelector` · `XmlObjectMap` · `XmlObjectValue`
 
 ## Features
 
