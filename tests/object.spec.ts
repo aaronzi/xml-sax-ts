@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ObjectBuilder, XmlSaxParser, buildObject, parseXmlString, stripNamespace } from "../src/index";
+import {
+  ObjectBuilder,
+  XmlSaxParser,
+  buildObject,
+  buildXmlNode,
+  objectToXml,
+  parseXmlString,
+  serializeXml,
+  stripNamespace
+} from "../src/index";
 
 describe("buildObject", () => {
   it("projects attributes and text", () => {
@@ -54,5 +63,48 @@ describe("stripNamespace", () => {
   it("returns local names", () => {
     expect(stripNamespace("p:node")).toBe("node");
     expect(stripNamespace("node")).toBe("node");
+  });
+});
+
+describe("buildXmlNode", () => {
+  it("maps attributes and text", () => {
+    const node = buildXmlNode({ root: { "@_id": "1", "#text": "Hello" } });
+
+    expect(serializeXml(node)).toBe("<root id=\"1\">Hello</root>");
+  });
+
+  it("creates repeated elements from arrays", () => {
+    const node = buildXmlNode({ root: { item: ["1", "2"] } });
+
+    expect(serializeXml(node)).toBe("<root><item>1</item><item>2</item></root>");
+  });
+
+  it("supports mixed content arrays", () => {
+    const node = buildXmlNode({ root: ["Hi ", { child: "there" }, "!"] });
+
+    expect(serializeXml(node)).toBe("<root>Hi <child>there</child>!</root>");
+  });
+
+  it("strips namespaces when requested", () => {
+    const node = buildXmlNode(
+      { "p:root": { "@_p:id": "1", "p:child": "value" } },
+      { stripNamespaces: true }
+    );
+
+    expect(serializeXml(node)).toBe("<root id=\"1\"><child>value</child></root>");
+  });
+
+  it("uses rootName when object has multiple keys", () => {
+    const node = buildXmlNode({ a: "1", b: "2" }, { rootName: "root" });
+
+    expect(serializeXml(node)).toBe("<root><a>1</a><b>2</b></root>");
+  });
+});
+
+describe("objectToXml", () => {
+  it("serializes via buildXmlNode", () => {
+    const xml = objectToXml({ root: { item: ["1", "2"] } });
+
+    expect(xml).toBe("<root><item>1</item><item>2</item></root>");
   });
 });

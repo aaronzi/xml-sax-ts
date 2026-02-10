@@ -76,8 +76,27 @@ export interface ObjectBuilderOptions {
   coalesceText?: boolean;
 }
 
+export interface XmlBuilderOptions extends ObjectBuilderOptions {
+  rootName?: string;
+}
+
 export type XmlObjectValue = string | XmlObjectMap | XmlObjectValue[];
 
 export interface XmlObjectMap {
   [key: string]: XmlObjectValue;
 }
+
+export type XmlInputValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | XmlInputObject
+  | XmlInputValue[];
+
+export interface XmlInputObject {
+  [key: string]: XmlInputValue;
+}
+
+export interface ObjectToXmlOptions extends XmlBuilderOptions, SerializeOptions {}

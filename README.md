@@ -82,6 +82,31 @@ const obj = builder.getResult();
 // { item: ["1", "2"] }
 ```
 
+### Object to XML
+
+```ts
+import { objectToXml } from "xml-sax-ts";
+
+const xml = objectToXml({
+  root: {
+    "@_id": "1",
+    item: ["1", "2"],
+  }
+});
+
+// <root id="1"><item>1</item><item>2</item></root>
+```
+
+```ts
+import { buildObject, objectToXml, parseXmlString } from "xml-sax-ts";
+
+const root = parseXmlString("<root id='1'><item>1</item></root>");
+const obj = buildObject(root);
+const xml = objectToXml(obj, { rootName: "root" });
+
+// <root id="1"><item>1</item></root>
+```
+
 ### Serialize to XML
 
 ```ts
@@ -157,6 +182,24 @@ Streaming builder that produces the same object shape as `buildObject` without b
 | `arrayElements`    | `Set\<string\> \| (name: string, path: string[]) => boolean` | —         | Force specific elements to always be arrays    |
 | `coalesceText`     | `boolean`                                                    | `true`    | Merge adjacent text nodes into a single string |
 
+### `buildXmlNode(obj, options?)`
+
+Converts a plain object into an `XmlNode` tree using the same attribute/text conventions as `buildObject`.
+
+### `objectToXml(obj, options?)`
+
+Builds an `XmlNode` with `buildXmlNode` and serializes it with `serializeXml`.
+
+#### `XmlBuilderOptions`
+
+| Option             | Type                                                         | Default   | Description                                    |
+| ------------------ | ------------------------------------------------------------ | --------- | ---------------------------------------------- |
+| `attributePrefix`  | `string`                                                     | `"@_"`    | Prefix for attribute keys                      |
+| `textKey`          | `string`                                                     | `"#text"` | Key used for text nodes                        |
+| `stripNamespaces`  | `boolean`                                                    | `false`   | Strip namespace prefixes from names            |
+| `arrayElements`    | `Set\<string\> \| (name: string, path: string[]) => boolean` | —         | Force specific elements to always be arrays    |
+| `rootName`         | `string`                                                     | —         | Root element name when object has multiple keys |
+
 ### `serializeXml(node, options?)`
 
 Serializes an `XmlNode` back to an XML string.
@@ -176,7 +219,7 @@ Custom error class thrown on parse errors. Includes `offset`, `line`, and `colum
 
 ### Exported types
 
-`OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `ParserOptions` · `SerializeOptions` · `ObjectBuilderOptions` · `ArrayElementSelector` · `XmlObjectMap` · `XmlObjectValue`
+`OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `ParserOptions` · `SerializeOptions` · `ObjectBuilderOptions` · `ArrayElementSelector` · `XmlObjectMap` · `XmlObjectValue` · `XmlBuilderOptions` · `XmlInputObject` · `XmlInputValue` · `ObjectToXmlOptions`
 
 ## Features
 

@@ -2,11 +2,19 @@ export { XmlSaxParser } from "./parser";
 export { XmlSaxError } from "./errors";
 export { parseXmlString, TreeBuilder } from "./tree";
 export { serializeXml } from "./serializer";
-export { buildObject, ObjectBuilder, resolveName, stripNamespace } from "./object";
+export {
+  buildObject,
+  buildXmlNode,
+  objectToXml,
+  ObjectBuilder,
+  resolveName,
+  stripNamespace
+} from "./object";
 export type {
   ArrayElementSelector,
   CloseTag,
   Doctype,
+  ObjectToXmlOptions,
   ObjectBuilderOptions,
   OpenTag,
   ParserOptions,
@@ -14,6 +22,9 @@ export type {
   SerializeOptions,
   XmlObjectMap,
   XmlObjectValue,
+  XmlBuilderOptions,
+  XmlInputObject,
+  XmlInputValue,
   XmlAttribute,
   XmlChild,
   XmlNode,

@@ -1,7 +1,12 @@
+import { serializeXml } from "./serializer";
 import type {
   ObjectBuilderOptions,
+  ObjectToXmlOptions,
   OpenTag,
   XmlAttribute,
+  XmlBuilderOptions,
+  XmlInputObject,
+  XmlInputValue,
   XmlNode,
   XmlObjectMap,
   XmlObjectValue
@@ -23,6 +28,9 @@ const DEFAULT_OBJECT_OPTIONS: Required<Omit<ObjectBuilderOptions, "arrayElements
 
 type ObjectBuilderSettings = Required<Omit<ObjectBuilderOptions, "arrayElements">> &
   Pick<ObjectBuilderOptions, "arrayElements">;
+
+type XmlBuilderSettings = Required<Omit<XmlBuilderOptions, "arrayElements" | "rootName">> &
+  Pick<XmlBuilderOptions, "arrayElements" | "rootName">;
 
 export function stripNamespace(name: string): string {
   const index = name.indexOf(":");
@@ -60,6 +68,18 @@ export function resolveName(
 export function buildObject(root: XmlNode, options: ObjectBuilderOptions = {}): XmlObjectValue {
   const settings = buildSettings(options);
   return buildNode(root, settings, []);
+}
+
+export function buildXmlNode(obj: XmlInputValue, options: XmlBuilderOptions = {}): XmlNode {
+  const settings = buildXmlSettings(options);
+  const root = resolveRoot(obj, settings);
+  const rootName = normalizeName(root.name, settings);
+  return buildElement(rootName, root.value, settings, []);
+}
+
+export function objectToXml(obj: XmlInputValue, options: ObjectToXmlOptions = {}): string {
+  const node = buildXmlNode(obj, options);
+  return serializeXml(node, options);
 }
 
 export class ObjectBuilder {
@@ -139,6 +159,10 @@ function buildSettings(options: ObjectBuilderOptions): ObjectBuilderSettings {
   return { ...DEFAULT_OBJECT_OPTIONS, ...options };
 }
 
+function buildXmlSettings(options: XmlBuilderOptions): XmlBuilderSettings {
+  return { ...DEFAULT_OBJECT_OPTIONS, ...options };
+}
+
 function buildNode(node: XmlNode, options: ObjectBuilderSettings, path: string[]): XmlObjectValue {
   const name = normalizeName(node.name, options);
   const attributes = normalizeAttributeMap(node.attributes ?? {}, options);
@@ -167,6 +191,13 @@ function buildNode(node: XmlNode, options: ObjectBuilderSettings, path: string[]
 }
 
 function normalizeName(name: string, options: ObjectBuilderSettings): string {
+  if (options.stripNamespaces) {
+    return stripNamespace(name);
+  }
+  return name;
+}
+
+function normalizeXmlName(name: string, options: XmlBuilderSettings): string {
   if (options.stripNamespaces) {
     return stripNamespace(name);
   }
@@ -229,6 +260,201 @@ function shouldForceArray(name: string, path: string[], options: ObjectBuilderSe
     return rule.has(name);
   }
   return rule(name, path);
+}
+
+function resolveRoot(obj: XmlInputValue, options: XmlBuilderSettings): { name: string; value: XmlInputValue } {
+  if (isRecord(obj)) {
+    const keys = Object.keys(obj);
+    if (keys.length === 1) {
+      const name = keys[0] ?? "";
+      return { name, value: obj[name] };
+    }
+  }
+
+  if (!options.rootName) {
+    throw new Error("Root element name is required when object has multiple keys");
+  }
+
+  return { name: options.rootName, value: obj };
+}
+
+function buildElement(
+  name: string,
+  value: XmlInputValue,
+  options: XmlBuilderSettings,
+  path: string[]
+): XmlNode {
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
+  const children: (XmlNode | string)[] = [];
+  const nextPath = [...path, name];
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendContent(children, item, options, nextPath);
+    }
+    return finalizeNode(name, attributes, children);
+  }
+
+  if (isPrimitive(value)) {
+    const text = coerceText(value);
+    if (text !== null) {
+      children.push(text);
+    }
+    return finalizeNode(name, attributes, children);
+  }
+
+  if (isRecord(value)) {
+    for (const [key, entryValue] of Object.entries(value)) {
+      if (isAttributeKey(key, options)) {
+        const attrName = normalizeXmlName(key.slice(options.attributePrefix.length), options);
+        const attrValue = coerceText(entryValue);
+        if (attrValue !== null) {
+          attributes[attrName] = attrValue;
+        }
+        continue;
+      }
+
+      if (key === options.textKey) {
+        appendText(children, entryValue, options);
+        continue;
+      }
+
+      const childName = normalizeXmlName(key, options);
+      addChildElements(children, childName, entryValue, options, nextPath);
+    }
+  }
+
+  return finalizeNode(name, attributes, children);
+}
+
+function addChildElements(
+  children: (XmlNode | string)[],
+  name: string,
+  value: XmlInputValue,
+  options: XmlBuilderSettings,
+  path: string[]
+): void {
+  const forcedArray = shouldForceArray(name, path, options);
+  const items = Array.isArray(value) ? value : forcedArray ? [value] : [value];
+
+  for (const item of items) {
+    if (item === undefined || item === null) {
+      children.push({ name });
+      continue;
+    }
+    children.push(buildElement(name, item, options, path));
+  }
+}
+
+function appendContent(
+  children: (XmlNode | string)[],
+  value: XmlInputValue,
+  options: XmlBuilderSettings,
+  path: string[]
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendContent(children, item, options, path);
+    }
+    return;
+  }
+
+  if (isPrimitive(value)) {
+    const text = coerceText(value);
+    if (text !== null) {
+      children.push(text);
+    }
+    return;
+  }
+
+  if (isRecord(value)) {
+    for (const [key, entryValue] of Object.entries(value)) {
+      const childName = normalizeXmlName(key, options);
+      addChildElements(children, childName, entryValue, options, path);
+    }
+  }
+}
+
+function appendText(
+  children: (XmlNode | string)[],
+  value: XmlInputValue,
+  options: XmlBuilderSettings
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => coerceText(item))
+      .filter((item): item is string => item !== null);
+    if (parts.length === 0) {
+      return;
+    }
+    if (options.coalesceText) {
+      children.push(parts.join(""));
+      return;
+    }
+    for (const part of parts) {
+      children.push(part);
+    }
+    return;
+  }
+
+  const text = coerceText(value);
+  if (text !== null) {
+    children.push(text);
+  }
+}
+
+function finalizeNode(
+  name: string,
+  attributes: Record<string, string>,
+  children: (XmlNode | string)[]
+): XmlNode {
+  const node: XmlNode = { name };
+  if (Object.keys(attributes).length > 0) {
+    node.attributes = attributes;
+  }
+  if (children.length > 0) {
+    node.children = children;
+  }
+  return node;
+}
+
+function isAttributeKey(key: string, options: XmlBuilderSettings): boolean {
+  if (!options.attributePrefix) {
+    return false;
+  }
+  return key.startsWith(options.attributePrefix) && key.length > options.attributePrefix.length;
+}
+
+function isRecord(value: XmlInputValue): value is XmlInputObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPrimitive(value: XmlInputValue): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+function coerceText(value: XmlInputValue): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return null;
 }
 
 function finalizeElement(state: ElementState, options: ObjectBuilderSettings): XmlObjectValue {
