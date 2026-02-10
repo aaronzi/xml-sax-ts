@@ -1,6 +1,6 @@
 {
   "name": "xml-sax-ts",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "One-pass, streaming (SAX-style) XML parser for TypeScript (Node.js & browsers)",
   "keywords": [
     "xml",

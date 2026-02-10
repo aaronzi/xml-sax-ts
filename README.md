@@ -67,9 +67,7 @@ const xml = serializeXml(
 // <?xml version="1.0" encoding="UTF-8"?>
 // <root id="1">
 //   Hello
-//   <child>
-//     World
-//   </child>
+//   <child>World</child>
 // </root>
 ```
 
@@ -81,10 +79,10 @@ const xml = serializeXml(
 new XmlSaxParser(options?: ParserOptions)
 ```
 
-| Method    | Description                                       |
-| --------- | ------------------------------------------------- |
-| `feed(chunk)` | Feed a string chunk to the parser            |
-| `close()`     | Signal end-of-input and validate open tags   |
+| Method.       | Description                                |
+| ------------- | ------------------------------------------ |
+| `feed(chunk)` | Feed a string chunk to the parser          |
+| `close()`     | Signal end-of-input and validate open tags |
 
 #### `ParserOptions`
 
@@ -93,14 +91,14 @@ new XmlSaxParser(options?: ParserOptions)
 | `xmlns`                       | `boolean`  | `true`  | Enable namespace resolution                    |
 | `includeNamespaceAttributes`  | `boolean`  | `false` | Include `xmlns:*` attributes in tag output     |
 | `allowDoctype`                | `boolean`  | `true`  | Allow `<!DOCTYPE …>` declarations              |
-| `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag      |
-| `onCloseTag`                  | `function` | —       | Called for each closing tag                     |
-| `onText`                      | `function` | —       | Called for text nodes                           |
-| `onCdata`                     | `function` | —       | Called for CDATA sections                       |
-| `onComment`                   | `function` | —       | Called for comments                             |
-| `onProcessingInstruction`     | `function` | —       | Called for processing instructions (`<?…?>`)    |
-| `onDoctype`                   | `function` | —       | Called for DOCTYPE declarations                 |
-| `onError`                     | `function` | —       | Called on parse errors                          |
+| `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag     |
+| `onCloseTag`                  | `function` | —       | Called for each closing tag                    |
+| `onText`                      | `function` | —       | Called for text nodes                          |
+| `onCdata`                     | `function` | —       | Called for CDATA sections                      |
+| `onComment`                   | `function` | —       | Called for comments                            |
+| `onProcessingInstruction`     | `function` | —       | Called for processing instructions (`<?…?>`)   |
+| `onDoctype`                   | `function` | —       | Called for DOCTYPE declarations                |
+| `onError`                     | `function` | —       | Called on parse errors                         |
 
 ### `parseXmlString(xml, options?)`
 

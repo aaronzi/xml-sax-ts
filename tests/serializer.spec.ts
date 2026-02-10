@@ -21,6 +21,18 @@ describe("serializeXml", () => {
       { pretty: true, indent: "  ", newline: "\n" }
     );
 
-    expect(xml).toBe("<root>\n  <child>Text</child>\n</root>");
+    expect(xml).toBe("<root>\n  <child>Text</child>\n</root>\n");
+  });
+
+  it("adds a trailing newline when pretty printing", () => {
+    const xml = serializeXml(
+      {
+        name: "root",
+        children: [{ name: "child", children: ["Text"] }]
+      },
+      { pretty: true, indent: "  ", newline: "\n" }
+    );
+
+    expect(xml.endsWith("\n")).toBe(true);
   });
 });

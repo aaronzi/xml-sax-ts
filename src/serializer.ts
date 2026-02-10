@@ -9,7 +9,10 @@ const DEFAULT_OPTIONS: Required<Pick<SerializeOptions, "pretty" | "indent" | "ne
 
 export function serializeXml(node: XmlNode, options: SerializeOptions = {}): string {
   const settings = { ...DEFAULT_OPTIONS, ...options };
-  const body = serializeNode(node, settings, 0);
+  let body = serializeNode(node, settings, 0);
+  if (settings.pretty && !body.endsWith(settings.newline)) {
+    body = `${body}${settings.newline}`;
+  }
   if (!settings.xmlDeclaration) {
     return body;
   }
