@@ -176,33 +176,33 @@ Note: SAX event parsing and object materialization are not identical workloads. 
 
 GPU is not used by these Node.js parser benchmarks, but listed for full machine disclosure.
 
-Latest high-confidence sample (`BENCH_ROUNDS=6 BENCH_MIN_MS=1200 BENCH_WARMUP=20 npm run bench`, Node `v24.7.0`):
+Latest sample (`npm run bench` defaults, Node `v24.7.0`):
 
 | Scenario | Median ops/s |
 | --- | ---: |
-| `xml-sax-ts:sax single-feed xmlns=true` | 15,033.27 |
-| `xml-sax-ts:sax single-feed xmlns=false` | 20,857.92 |
-| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,884.23 |
-| `sax:single-feed xmlns=false` | 8,211.53 |
-| `saxes:single-feed xmlns=false` | 23,413.13 |
-| `xml-sax-ts:tree parseXmlString` | 8,537.02 |
-| `fast-xml-parser:object parse` | 6,163.08 |
+| `xml-sax-ts:sax single-feed xmlns=true` | 15,155.48 |
+| `xml-sax-ts:sax single-feed xmlns=false` | 21,178.68 |
+| `xml-sax-ts:sax single-feed xmlns=false no-position` | 22,230.83 |
+| `sax:single-feed xmlns=false` | 8,357.12 |
+| `saxes:single-feed xmlns=false` | 23,296.03 |
+| `xml-sax-ts:tree parseXmlString` | 8,833.38 |
+| `fast-xml-parser:object parse` | 6,128.40 |
 
 Comparable minimal feature scenarios (fair `saxes` parity check):
 
 | Scenario | Median ops/s |
 | --- | ---: |
-| `comparable:xml-sax-ts single-feed xmlns=false position=false` | 22,655.25 |
-| `comparable:saxes single-feed xmlns=false position=false` | 23,297.04 |
-| `comparable:xml-sax-ts single-feed xmlns=true position=false` | 15,959.25 |
-| `comparable:saxes single-feed xmlns=true position=false` | 11,671.05 |
+| `comparable:xml-sax-ts single-feed xmlns=false position=false` | 22,637.22 |
+| `comparable:saxes single-feed xmlns=false position=false` | 23,305.98 |
+| `comparable:xml-sax-ts single-feed xmlns=true position=false` | 16,468.14 |
+| `comparable:saxes single-feed xmlns=true position=false` | 11,868.48 |
 
-- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.540x`
-- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `2.966x`
-- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.891x`
-- `comparable minimal (xmlns=false, xml-sax-ts vs saxes)`: `0.972x`
-- `comparable minimal (xmlns=true, xml-sax-ts vs saxes)`: `1.367x`
-- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.385x`
+- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.534x`
+- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `2.989x`
+- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.909x`
+- `comparable minimal (xmlns=false, xml-sax-ts vs saxes)`: `0.971x`
+- `comparable minimal (xmlns=true, xml-sax-ts vs saxes)`: `1.388x`
+- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.441x`
 
 Benchmark visualization (same sample run):
 
@@ -211,7 +211,7 @@ xychart-beta
   title "SAX Throughput (xmlns=false)"
   x-axis ["xml-sax-ts", "xml-sax-ts no-position", "sax", "saxes"]
   y-axis "ops/s" 0 --> 24000
-  bar [20857.92, 21884.23, 8211.53, 23413.13]
+  bar [21178.68, 22230.83, 8357.12, 23296.03]
 ```
 
 ```mermaid
@@ -219,7 +219,7 @@ xychart-beta
   title "Object/Tree Throughput"
   x-axis ["xml-sax-ts tree", "fast-xml-parser object"]
   y-axis "ops/s" 0 --> 9000
-  bar [8537.02, 6163.08]
+  bar [8833.38, 6128.40]
 ```
 
 ```mermaid
@@ -227,7 +227,7 @@ xychart-beta
   title "Comparable Minimal (position=false)"
   x-axis ["xml-sax-ts xmlns=false", "saxes xmlns=false", "xml-sax-ts xmlns=true", "saxes xmlns=true"]
   y-axis "ops/s" 0 --> 24000
-  bar [22655.25, 23297.04, 15959.25, 11671.05]
+  bar [22637.22, 23305.98, 16468.14, 11868.48]
 ```
 
 Legend: `xml-sax-ts` bars are the first bars in each chart.
@@ -239,7 +239,7 @@ Best fair-comparison read:
 
 These values are machine-dependent; rerun on your hardware for release-quality numbers.
 
-Current status for this environment: high-confidence comparable runs show `xml-sax-ts` at `0.972x` of `saxes` on `xmlns=false` and `1.367x` on `xmlns=true`.
+Current status for this environment: comparable runs show `xml-sax-ts` at `0.971x` of `saxes` on `xmlns=false` and `1.388x` on `xmlns=true`.
 
 ## API
 

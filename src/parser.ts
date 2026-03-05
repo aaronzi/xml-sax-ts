@@ -41,6 +41,8 @@ const DEFAULT_OPTIONS: Required<
 
 const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE_URI = "http://www.w3.org/2000/xmlns/";
+const WHITESPACE_RE = /\s/;
+const CRLF_RE = /\r\n?/g;
 
 const NAME_START_TABLE = new Uint8Array(128);
 const NAME_CHAR_TABLE = new Uint8Array(128);
@@ -89,7 +91,7 @@ export class XmlSaxParser {
   ];
   private closed = false;
   private pendingCR = false;
-  private pendingText = "";
+  private readonly pendingTextParts: string[] = [];
   private readonly _rawAttrs: RawAttribute[] = [];
 
   constructor(options: ParserOptions = {}) {
@@ -202,7 +204,7 @@ export class XmlSaxParser {
         return null;
       }
       const body = this.buffer.slice(start + 2, end).trim();
-      const split = body.search(/\s/);
+      const split = body.search(WHITESPACE_RE);
       const target = split === -1 ? body : body.slice(0, split);
       const data = split === -1 ? "" : body.slice(split).trim();
       const pi: ProcessingInstruction = { target, body: data };
@@ -454,7 +456,7 @@ export class XmlSaxParser {
       }
 
       const rawValue = this.buffer.slice(i, valueEnd);
-      const normalized = rawValue.includes("\r") ? rawValue.replace(/\r\n?/g, "\n") : rawValue;
+      const normalized = rawValue.includes("\r") ? rawValue.replace(CRLF_RE, "\n") : rawValue;
       const value = !normalized.includes("&") ? normalized : decodeEntities(normalized, this.onError);
       attributes.push({ name: attrName.name, value });
       i = valueEnd + 1;
@@ -502,15 +504,17 @@ export class XmlSaxParser {
       this.onText?.(text);
       return;
     }
-    this.pendingText += text;
+    this.pendingTextParts.push(text);
   }
 
   private _flushTextBuffer(): void {
-    if (!this.coalesceText || this.pendingText.length === 0) {
+    if (!this.coalesceText || this.pendingTextParts.length === 0) {
       return;
     }
-    this.onText?.(this.pendingText);
-    this.pendingText = "";
+    const first = this.pendingTextParts[0];
+    const text = this.pendingTextParts.length === 1 && first !== undefined ? first : this.pendingTextParts.join("");
+    this.pendingTextParts.length = 0;
+    this.onText?.(text);
   }
 
   private _resolveName(rawName: string, ns: NamespaceMap): ResolvedName {
@@ -749,7 +753,7 @@ export class XmlSaxParser {
       value = value.slice(0, -1);
     }
 
-    const normalized = !value.includes("\r") ? value : value.replace(/\r\n?/g, "\n");
+    const normalized = !value.includes("\r") ? value : value.replace(CRLF_RE, "\n");
     return prefix ? `${prefix}${normalized}` : normalized;
   }
 
