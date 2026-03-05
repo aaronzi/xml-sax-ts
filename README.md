@@ -180,29 +180,29 @@ Latest high-confidence sample (`BENCH_ROUNDS=6 BENCH_MIN_MS=1200 BENCH_WARMUP=20
 
 | Scenario | Median ops/s |
 | --- | ---: |
-| `xml-sax-ts:sax single-feed xmlns=true` | 13,806.20 |
-| `xml-sax-ts:sax single-feed xmlns=false` | 19,079.17 |
-| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,884.80 |
-| `sax:single-feed xmlns=false` | 8,396.62 |
-| `saxes:single-feed xmlns=false` | 23,139.22 |
-| `xml-sax-ts:tree parseXmlString` | 8,283.71 |
-| `fast-xml-parser:object parse` | 6,140.67 |
+| `xml-sax-ts:sax single-feed xmlns=true` | 15,033.27 |
+| `xml-sax-ts:sax single-feed xmlns=false` | 20,857.92 |
+| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,884.23 |
+| `sax:single-feed xmlns=false` | 8,211.53 |
+| `saxes:single-feed xmlns=false` | 23,413.13 |
+| `xml-sax-ts:tree parseXmlString` | 8,537.02 |
+| `fast-xml-parser:object parse` | 6,163.08 |
 
 Comparable minimal feature scenarios (fair `saxes` parity check):
 
 | Scenario | Median ops/s |
 | --- | ---: |
-| `comparable:xml-sax-ts single-feed xmlns=false position=false` | 22,775.14 |
-| `comparable:saxes single-feed xmlns=false position=false` | 23,007.10 |
-| `comparable:xml-sax-ts single-feed xmlns=true position=false` | 15,945.78 |
-| `comparable:saxes single-feed xmlns=true position=false` | 11,656.96 |
+| `comparable:xml-sax-ts single-feed xmlns=false position=false` | 22,655.25 |
+| `comparable:saxes single-feed xmlns=false position=false` | 23,297.04 |
+| `comparable:xml-sax-ts single-feed xmlns=true position=false` | 15,959.25 |
+| `comparable:saxes single-feed xmlns=true position=false` | 11,671.05 |
 
-- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.272x`
-- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `2.739x`
-- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.825x`
-- `comparable minimal (xmlns=false, xml-sax-ts vs saxes)`: `0.990x`
-- `comparable minimal (xmlns=true, xml-sax-ts vs saxes)`: `1.368x`
-- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.349x`
+- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.540x`
+- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `2.966x`
+- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.891x`
+- `comparable minimal (xmlns=false, xml-sax-ts vs saxes)`: `0.972x`
+- `comparable minimal (xmlns=true, xml-sax-ts vs saxes)`: `1.367x`
+- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.385x`
 
 Benchmark visualization (same sample run):
 
@@ -211,7 +211,7 @@ xychart-beta
   title "SAX Throughput (xmlns=false)"
   x-axis ["xml-sax-ts", "xml-sax-ts no-position", "sax", "saxes"]
   y-axis "ops/s" 0 --> 24000
-  bar [19079.17, 21884.8, 8396.62, 23139.22]
+  bar [20857.92, 21884.23, 8211.53, 23413.13]
 ```
 
 ```mermaid
@@ -219,7 +219,7 @@ xychart-beta
   title "Object/Tree Throughput"
   x-axis ["xml-sax-ts tree", "fast-xml-parser object"]
   y-axis "ops/s" 0 --> 9000
-  bar [8283.71, 6140.67]
+  bar [8537.02, 6163.08]
 ```
 
 ```mermaid
@@ -227,7 +227,7 @@ xychart-beta
   title "Comparable Minimal (position=false)"
   x-axis ["xml-sax-ts xmlns=false", "saxes xmlns=false", "xml-sax-ts xmlns=true", "saxes xmlns=true"]
   y-axis "ops/s" 0 --> 24000
-  bar [22775.14, 23007.1, 15945.78, 11656.96]
+  bar [22655.25, 23297.04, 15959.25, 11671.05]
 ```
 
 Legend: `xml-sax-ts` bars are the first bars in each chart.
@@ -239,7 +239,7 @@ Best fair-comparison read:
 
 These values are machine-dependent; rerun on your hardware for release-quality numbers.
 
-Current status for this environment: high-confidence comparable runs show `xml-sax-ts` at `0.990x` of `saxes` on `xmlns=false` and `1.368x` on `xmlns=true`.
+Current status for this environment: high-confidence comparable runs show `xml-sax-ts` at `0.972x` of `saxes` on `xmlns=false` and `1.367x` on `xmlns=true`.
 
 ## API
 

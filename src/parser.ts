@@ -90,6 +90,7 @@ export class XmlSaxParser {
   private closed = false;
   private pendingCR = false;
   private pendingText = "";
+  private readonly _rawAttrs: RawAttribute[] = [];
 
   constructor(options: ParserOptions = {}) {
     const resolved = { ...DEFAULT_OPTIONS, ...options };
@@ -188,11 +189,11 @@ export class XmlSaxParser {
   private _parseMarkupFrom(start: number, final: boolean): number | null {
     assert(this.buffer[start] === "<", "Markup must start with '<'");
 
-    this._flushPendingCR();
+    if (this.pendingCR) this._flushPendingCR();
 
-    const second = this.buffer[start + 1];
+    const secondCode = this.buffer.charCodeAt(start + 1);
 
-    if (second === "?") {
+    if (secondCode === 63) {
       const end = this.buffer.indexOf("?>", start + 2);
       if (end === -1) {
         if (final) {
@@ -210,10 +211,10 @@ export class XmlSaxParser {
       return end + 2 - start;
     }
 
-    if (second === "!") {
-      const third = this.buffer[start + 2];
+    if (secondCode === 33) {
+      const thirdCode = this.buffer.charCodeAt(start + 2);
 
-      if (third === "-" && this.buffer[start + 3] === "-") {
+      if (thirdCode === 45 && this.buffer.charCodeAt(start + 3) === 45) {
         const end = this.buffer.indexOf("-->", start + 4);
         if (end === -1) {
           if (final) {
@@ -227,7 +228,7 @@ export class XmlSaxParser {
         return end + 3 - start;
       }
 
-      if (third === "[" && this.buffer.startsWith("<![CDATA[", start)) {
+      if (thirdCode === 91 && this.buffer.startsWith("<![CDATA[", start)) {
         const end = this.buffer.indexOf("]]>", start + 9);
         if (end === -1) {
           if (final) {
@@ -244,7 +245,7 @@ export class XmlSaxParser {
         return end + 3 - start;
       }
 
-      if (third === "D" && this.buffer.startsWith("<!DOCTYPE", start)) {
+      if (thirdCode === 68 && this.buffer.startsWith("<!DOCTYPE", start)) {
         const end = this._findDoctypeEnd(start + 9);
         if (end === -1) {
           if (final) {
@@ -263,7 +264,7 @@ export class XmlSaxParser {
       }
     }
 
-    if (second === "/") {
+    if (secondCode === 47) {
       const end = this.buffer.indexOf(">", start + 2);
       if (end === -1) {
         if (final) {
@@ -279,7 +280,7 @@ export class XmlSaxParser {
         this._error("Invalid closing tag");
       }
 
-      this._handleCloseTag(parsed.name);
+      this._handleCloseTag(parsed.name, parsed.end);
       return end + 1 - start;
     }
 
@@ -408,7 +409,8 @@ export class XmlSaxParser {
     const parsedName = this._parseName(this.buffer, i, end);
     i = parsedName.end;
 
-    const attributes: RawAttribute[] = [];
+    const attributes = this._rawAttrs;
+    attributes.length = 0;
     let selfClosing = false;
 
     while (i < end) {
@@ -417,7 +419,7 @@ export class XmlSaxParser {
         break;
       }
 
-      if (this.buffer[i] === "/") {
+      if (this.buffer.charCodeAt(i) === 47) {
         i += 1;
         i = this._skipWhitespace(this.buffer, i, end);
         if (i !== end) {
@@ -431,18 +433,19 @@ export class XmlSaxParser {
       i = attrName.end;
       i = this._skipWhitespace(this.buffer, i, end);
 
-      if (this.buffer[i] !== "=") {
+      if (this.buffer.charCodeAt(i) !== 61) {
         this._error("Attribute without '='");
       }
 
       i += 1;
       i = this._skipWhitespace(this.buffer, i, end);
 
-      const quote = this.buffer[i];
-      if (quote !== '"' && quote !== "'") {
+      const quoteCode = this.buffer.charCodeAt(i);
+      if (quoteCode !== 34 && quoteCode !== 39) {
         this._error("Attribute value must be quoted");
       }
 
+      const quote = String.fromCharCode(quoteCode);
       i += 1;
 
       const valueEnd = this.buffer.indexOf(quote, i);
@@ -460,7 +463,7 @@ export class XmlSaxParser {
     return { name: parsedName.name, attributes, selfClosing };
   }
 
-  private _handleCloseTag(rawName: string): void {
+  private _handleCloseTag(rawName: string, _nameEnd?: number): void {
     this._flushTextBuffer();
 
     const entry = this.elementStack.pop();
@@ -606,20 +609,20 @@ export class XmlSaxParser {
       return quickEnd;
     }
 
-    let quote: string | null = null;
+    let quoteCode = 0;
     for (let i = start; i < this.buffer.length; i += 1) {
-      const ch = this.buffer[i];
-      if (quote) {
-        if (ch === quote) {
-          quote = null;
+      const code = this.buffer.charCodeAt(i);
+      if (quoteCode) {
+        if (code === quoteCode) {
+          quoteCode = 0;
         }
         continue;
       }
-      if (ch === "\"" || ch === "'") {
-        quote = ch;
+      if (code === 34 || code === 39) {
+        quoteCode = code;
         continue;
       }
-      if (ch === ">") {
+      if (code === 62) {
         return i;
       }
     }
@@ -627,30 +630,30 @@ export class XmlSaxParser {
   }
 
   private _findDoctypeEnd(start: number): number {
-    let quote: string | null = null;
+    let quoteCode = 0;
     let bracketDepth = 0;
 
     for (let i = start; i < this.buffer.length; i += 1) {
-      const ch = this.buffer[i];
-      if (quote) {
-        if (ch === quote) {
-          quote = null;
+      const code = this.buffer.charCodeAt(i);
+      if (quoteCode) {
+        if (code === quoteCode) {
+          quoteCode = 0;
         }
         continue;
       }
-      if (ch === "\"" || ch === "'") {
-        quote = ch;
+      if (code === 34 || code === 39) {
+        quoteCode = code;
         continue;
       }
-      if (ch === "[") {
+      if (code === 91) {
         bracketDepth += 1;
         continue;
       }
-      if (ch === "]") {
+      if (code === 93) {
         bracketDepth = Math.max(0, bracketDepth - 1);
         continue;
       }
-      if (ch === ">" && bracketDepth === 0) {
+      if (code === 62 && bracketDepth === 0) {
         return i;
       }
     }
@@ -663,22 +666,14 @@ export class XmlSaxParser {
       this._error("Expected name");
     }
 
-    const first = input[start];
-    if (first === undefined) {
-      this._error("Expected name");
-    }
-    const firstCode = first.charCodeAt(0);
-    if (firstCode >= 128 || NAME_START_TABLE[firstCode] === 0) {
-      this._error(`Invalid name start: '${first}'`);
+    const firstCode = input.charCodeAt(start);
+    if (firstCode !== firstCode || firstCode >= 128 || NAME_START_TABLE[firstCode] === 0) {
+      this._error(`Invalid name start: '${input[start] ?? ""}'`);
     }
 
     let i = start + 1;
     while (i < end) {
-      const ch = input[i];
-      if (ch === undefined) {
-        break;
-      }
-      const code = ch.charCodeAt(0);
+      const code = input.charCodeAt(i);
       if (code >= 128 || NAME_CHAR_TABLE[code] === 0) {
         break;
       }
@@ -691,11 +686,8 @@ export class XmlSaxParser {
   private _skipWhitespace(input: string, start: number, end: number): number {
     let i = start;
     while (i < end) {
-      const ch = input[i];
-      if (ch === undefined) {
-        break;
-      }
-      if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r") {
+      const code = input.charCodeAt(i);
+      if (code !== 32 && code !== 9 && code !== 10 && code !== 13) {
         break;
       }
       i += 1;
@@ -713,18 +705,18 @@ export class XmlSaxParser {
       return;
     }
 
-    let newlineCount = 0;
-    let lastNewline = -1;
-    for (let i = 0; i < text.length; i += 1) {
-      if (text.charCodeAt(i) === 10) {
-        newlineCount += 1;
-        lastNewline = i;
-      }
-    }
-
-    if (newlineCount === 0) {
+    let pos = text.indexOf("\n");
+    if (pos === -1) {
       this.column += text.length;
       return;
+    }
+
+    let newlineCount = 0;
+    let lastNewline = -1;
+    while (pos !== -1) {
+      newlineCount += 1;
+      lastNewline = pos;
+      pos = text.indexOf("\n", pos + 1);
     }
 
     this.line += newlineCount;
@@ -746,13 +738,13 @@ export class XmlSaxParser {
 
     if (this.pendingCR) {
       prefix = "\n";
-      if (value.startsWith("\n")) {
+      if (value.charCodeAt(0) === 10) {
         value = value.slice(1);
       }
       this.pendingCR = false;
     }
 
-    if (allowPendingCR && value.endsWith("\r")) {
+    if (allowPendingCR && value.charCodeAt(value.length - 1) === 13) {
       this.pendingCR = true;
       value = value.slice(0, -1);
     }
@@ -768,18 +760,18 @@ export class XmlSaxParser {
       return;
     }
 
-    let newlineCount = 0;
-    let lastNewline = -1;
-    for (let i = start; i < end; i += 1) {
-      if (this.buffer[i] === "\n") {
-        newlineCount += 1;
-        lastNewline = i;
-      }
-    }
-
-    if (newlineCount === 0) {
+    let pos = this.buffer.indexOf("\n", start);
+    if (pos === -1 || pos >= end) {
       this.column += length;
       return;
+    }
+
+    let newlineCount = 0;
+    let lastNewline = -1;
+    while (pos !== -1 && pos < end) {
+      newlineCount += 1;
+      lastNewline = pos;
+      pos = this.buffer.indexOf("\n", pos + 1);
     }
 
     this.line += newlineCount;
