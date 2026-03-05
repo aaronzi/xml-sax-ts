@@ -270,9 +270,12 @@ async function createSaxRunner(xmlns) {
   }
 }
 
-async function createSaxesRunner(xmlns) {
+async function createSaxesRunner(options) {
   try {
     const { SaxesParser } = await import("saxes");
+    const xmlns = options.xmlns;
+    const position = options.position ?? true;
+    const chunkSize = options.chunkSize ?? 0;
 
     return {
       available: true,
@@ -281,7 +284,7 @@ async function createSaxesRunner(xmlns) {
         let openCount = 0;
         let closeCount = 0;
 
-        const parser = new SaxesParser({ xmlns });
+        const parser = new SaxesParser({ xmlns, position });
         parser.on("opentag", () => {
           openCount += 1;
         });
@@ -292,7 +295,13 @@ async function createSaxesRunner(xmlns) {
           textLen += text.length;
         });
 
-        parser.write(xml);
+        if (chunkSize > 0) {
+          for (let i = 0; i < xml.length; i += chunkSize) {
+            parser.write(xml.slice(i, i + chunkSize));
+          }
+        } else {
+          parser.write(xml);
+        }
         parser.close();
         return openCount + closeCount + textLen;
       }
@@ -340,10 +349,38 @@ async function main() {
   const fastXml = await createFastXmlParserRunner();
   const saxFalse = await createSaxRunner(false);
   const saxTrue = await createSaxRunner(true);
-  const saxesFalse = await createSaxesRunner(false);
-  const saxesTrue = await createSaxesRunner(true);
+  const saxesFalse = await createSaxesRunner({ xmlns: false });
+  const saxesTrue = await createSaxesRunner({ xmlns: true });
+  const saxesFalseNoPosition = await createSaxesRunner({ xmlns: false, position: false });
+  const saxesTrueNoPosition = await createSaxesRunner({ xmlns: true, position: false });
+  const saxesFalseChunked16 = await createSaxesRunner({ xmlns: false, position: false, chunkSize: 16 });
+  const saxesTrueChunked16 = await createSaxesRunner({ xmlns: true, position: false, chunkSize: 16 });
 
   const scenarios = [
+    {
+      name: "comparable:xml-sax-ts single-feed xmlns=false position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runSaxDocuments(comparableDocuments, { xmlns: false, trackPosition: false })
+    },
+    {
+      name: "comparable:xml-sax-ts single-feed xmlns=true position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runSaxDocuments(comparableDocuments, { xmlns: true, trackPosition: false })
+    },
+    {
+      name: "comparable:xml-sax-ts chunked-16 xmlns=false position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runSaxDocuments(comparableDocuments, { xmlns: false, trackPosition: false, chunkSize: 16 })
+    },
+    {
+      name: "comparable:xml-sax-ts chunked-16 xmlns=true position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runSaxDocuments(comparableDocuments, { xmlns: true, trackPosition: false, chunkSize: 16 })
+    },
     {
       name: "xml-sax-ts:sax single-feed xmlns=true",
       group: "sax",
@@ -415,6 +452,42 @@ async function main() {
     });
   }
 
+  if (saxesFalseNoPosition.available) {
+    scenarios.push({
+      name: "comparable:saxes single-feed xmlns=false position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runExternalParserDocuments(saxesFalseNoPosition, comparableDocuments)
+    });
+  }
+
+  if (saxesTrueNoPosition.available) {
+    scenarios.push({
+      name: "comparable:saxes single-feed xmlns=true position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runExternalParserDocuments(saxesTrueNoPosition, comparableDocuments)
+    });
+  }
+
+  if (saxesFalseChunked16.available) {
+    scenarios.push({
+      name: "comparable:saxes chunked-16 xmlns=false position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runExternalParserDocuments(saxesFalseChunked16, comparableDocuments)
+    });
+  }
+
+  if (saxesTrueChunked16.available) {
+    scenarios.push({
+      name: "comparable:saxes chunked-16 xmlns=true position=false",
+      group: "comparable",
+      model: "sax",
+      fn: () => runExternalParserDocuments(saxesTrueChunked16, comparableDocuments)
+    });
+  }
+
   if (saxesTrue.available) {
     scenarios.push({
       name: "saxes:single-feed xmlns=true",
@@ -460,6 +533,16 @@ async function main() {
   const saxBaselineMedian = saxResults[0]?.distribution.median ?? 0;
   printTable(saxResults, saxBaselineMedian, "SAX / Streaming Results (median of rounds)");
 
+  const comparableResults = results.filter((result) => result.group === "comparable");
+  const comparableBaselineMedian = comparableResults[0]?.distribution.median ?? 0;
+  if (comparableResults.length > 0) {
+    printTable(
+      comparableResults,
+      comparableBaselineMedian,
+      "Comparable SAX Results (minimal equivalent features, median of rounds)"
+    );
+  }
+
   const objectResults = results.filter((result) => result.group === "object");
   const objectBaselineMedian = objectResults[0]?.distribution.median ?? 0;
   if (objectResults.length > 0) {
@@ -473,6 +556,18 @@ async function main() {
   const saxesComparable = results.find((result) => result.name === "saxes:single-feed xmlns=false");
   const saxesComparableXmlns = results.find((result) => result.name === "saxes:single-feed xmlns=true");
   const fastComparable = results.find((result) => result.name === "fast-xml-parser:object parse");
+  const comparableXmlSaxFalse = results.find(
+    (result) => result.name === "comparable:xml-sax-ts single-feed xmlns=false position=false"
+  );
+  const comparableXmlSaxTrue = results.find(
+    (result) => result.name === "comparable:xml-sax-ts single-feed xmlns=true position=false"
+  );
+  const comparableSaxesFalse = results.find(
+    (result) => result.name === "comparable:saxes single-feed xmlns=false position=false"
+  );
+  const comparableSaxesTrue = results.find(
+    (result) => result.name === "comparable:saxes single-feed xmlns=true position=false"
+  );
 
   if (saxComparable && saxPkgComparable) {
     const ratio = saxComparable.distribution.median / saxPkgComparable.distribution.median;
@@ -489,6 +584,14 @@ async function main() {
   if (saxComparableXmlns && saxesComparableXmlns) {
     const ratio = saxComparableXmlns.distribution.median / saxesComparableXmlns.distribution.median;
     console.log(`Comparable SAX ratio (xmlns=true, xml-sax-ts vs saxes): ${formatNumber(ratio, 3)}x`);
+  }
+  if (comparableXmlSaxFalse && comparableSaxesFalse) {
+    const ratio = comparableXmlSaxFalse.distribution.median / comparableSaxesFalse.distribution.median;
+    console.log(`Comparable minimal ratio (xmlns=false, xml-sax-ts vs saxes): ${formatNumber(ratio, 3)}x`);
+  }
+  if (comparableXmlSaxTrue && comparableSaxesTrue) {
+    const ratio = comparableXmlSaxTrue.distribution.median / comparableSaxesTrue.distribution.median;
+    console.log(`Comparable minimal ratio (xmlns=true, xml-sax-ts vs saxes): ${formatNumber(ratio, 3)}x`);
   }
   if (saxComparable && fastComparable) {
     const ratio = saxComparable.distribution.median / fastComparable.distribution.median;

@@ -5,11 +5,11 @@ export class TreeBuilder {
   private stack: XmlNode[] = [];
   private root: XmlNode | null = null;
 
-  onOpenTag = (tag: { name: string; attributes: Record<string, { value: string }> }): void => {
+  onOpenTag = (tag: { name: string; attributes: Record<string, { value: string } | string> }): void => {
     const node: XmlNode = {
       name: tag.name,
       attributes: Object.fromEntries(
-        Object.entries(tag.attributes).map(([key, attr]) => [key, attr.value])
+        Object.entries(tag.attributes).map(([key, attr]) => [key, typeof attr === "string" ? attr : attr.value])
       ),
       children: []
     };

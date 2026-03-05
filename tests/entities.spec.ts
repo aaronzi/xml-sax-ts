@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { XmlSaxError, XmlSaxParser } from "../src/index";
+import { getAttrValue } from "./helpers";
 
 function captureError(run: () => void): XmlSaxError {
   try {
@@ -20,7 +21,7 @@ describe("entities", () => {
         text += value;
       },
       onOpenTag: (tag) => {
-        attr = tag.attributes.a?.value ?? "";
+        attr = getAttrValue(tag, "a");
       }
     });
 

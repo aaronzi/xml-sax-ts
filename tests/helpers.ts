@@ -1,4 +1,21 @@
 import { XmlSaxParser } from "../src/index";
+import type { OpenTag } from "../src/types";
+
+export function getAttrValue(tag: Pick<OpenTag, "attributes">, name: string): string {
+  const attr = tag.attributes[name];
+  if (attr === undefined) {
+    return "";
+  }
+  return typeof attr === "string" ? attr : attr.value;
+}
+
+export function getAttrUri(tag: Pick<OpenTag, "attributes">, name: string): string {
+  const attr = tag.attributes[name];
+  if (attr === undefined || typeof attr === "string") {
+    return "";
+  }
+  return attr.uri;
+}
 
 export function collectEventsFromChunks(chunks: string[]): string[] {
   const events: string[] = [];

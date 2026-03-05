@@ -146,6 +146,7 @@ The benchmark now runs multiple rounds and reports median/mean/stddev for better
 - `xml-sax-ts:sax` scenarios measure streaming event parsing
 - `xml-sax-ts:sax` scenarios include explicit `xmlns=true/false` modes
 - `xml-sax-ts:sax ... no-position` shows upper-bound throughput with `trackPosition: false`
+- `comparable:*` scenarios run minimal equivalent feature sets for fair `xml-sax-ts` vs `saxes` comparison
 - `xml-sax-ts:tree` scenario measures full tree parsing (`parseXmlString`)
 - `sax` and `saxes` scenarios provide common SAX parser comparisons
 - `fast-xml-parser` scenarios measure object parsing on the same input corpus
@@ -175,23 +176,33 @@ Note: SAX event parsing and object materialization are not identical workloads. 
 
 GPU is not used by these Node.js parser benchmarks, but listed for full machine disclosure.
 
-Latest local sample (`npm run bench:quick`, Node `v24.7.0`):
+Latest high-confidence sample (`BENCH_ROUNDS=6 BENCH_MIN_MS=1200 BENCH_WARMUP=20 npm run bench`, Node `v24.7.0`):
 
 | Scenario | Median ops/s |
 | --- | ---: |
-| `xml-sax-ts:sax single-feed xmlns=true` | 8,842.13 |
-| `xml-sax-ts:sax single-feed xmlns=false` | 18,752.50 |
-| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,613.05 |
-| `sax:single-feed xmlns=false` | 8,571.82 |
-| `saxes:single-feed xmlns=false` | 23,359.67 |
-| `xml-sax-ts:tree parseXmlString` | 6,723.70 |
-| `fast-xml-parser:object parse` | 6,155.43 |
+| `xml-sax-ts:sax single-feed xmlns=true` | 13,806.20 |
+| `xml-sax-ts:sax single-feed xmlns=false` | 19,079.17 |
+| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,884.80 |
+| `sax:single-feed xmlns=false` | 8,396.62 |
+| `saxes:single-feed xmlns=false` | 23,139.22 |
+| `xml-sax-ts:tree parseXmlString` | 8,283.71 |
+| `fast-xml-parser:object parse` | 6,140.67 |
 
-- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.188x`
-- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `1.716x`
-- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.803x`
-- `xml-sax-ts:sax (xmlns=false no-position)` vs `saxes (xmlns=false)`: `0.925x`
-- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.092x`
+Comparable minimal feature scenarios (fair `saxes` parity check):
+
+| Scenario | Median ops/s |
+| --- | ---: |
+| `comparable:xml-sax-ts single-feed xmlns=false position=false` | 22,775.14 |
+| `comparable:saxes single-feed xmlns=false position=false` | 23,007.10 |
+| `comparable:xml-sax-ts single-feed xmlns=true position=false` | 15,945.78 |
+| `comparable:saxes single-feed xmlns=true position=false` | 11,656.96 |
+
+- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.272x`
+- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `2.739x`
+- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.825x`
+- `comparable minimal (xmlns=false, xml-sax-ts vs saxes)`: `0.990x`
+- `comparable minimal (xmlns=true, xml-sax-ts vs saxes)`: `1.368x`
+- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.349x`
 
 Benchmark visualization (same sample run):
 
@@ -200,25 +211,35 @@ xychart-beta
   title "SAX Throughput (xmlns=false)"
   x-axis ["xml-sax-ts", "xml-sax-ts no-position", "sax", "saxes"]
   y-axis "ops/s" 0 --> 24000
-  bar [18752.5, 21613.05, 8571.82, 23359.67]
+  bar [19079.17, 21884.8, 8396.62, 23139.22]
 ```
 
 ```mermaid
 xychart-beta
   title "Object/Tree Throughput"
   x-axis ["xml-sax-ts tree", "fast-xml-parser object"]
-  y-axis "ops/s" 0 --> 7000
-  bar [6723.7, 6155.43]
+  y-axis "ops/s" 0 --> 9000
+  bar [8283.71, 6140.67]
+```
+
+```mermaid
+xychart-beta
+  title "Comparable Minimal (position=false)"
+  x-axis ["xml-sax-ts xmlns=false", "saxes xmlns=false", "xml-sax-ts xmlns=true", "saxes xmlns=true"]
+  y-axis "ops/s" 0 --> 24000
+  bar [22775.14, 23007.1, 15945.78, 11656.96]
 ```
 
 Legend: `xml-sax-ts` bars are the first bars in each chart.
 
-Best comparable result to `saxes`:
+Best fair-comparison read:
 
-- Use `xml-sax-ts:sax single-feed xmlns=false` (`18,752.50 ops/s`) vs `saxes:single-feed xmlns=false` (`23,359.67 ops/s`).
-- `xml-sax-ts ... no-position` is useful for peak throughput, but not a fair default-to-default comparison.
+- Use `comparable:*` scenarios for `xml-sax-ts` vs `saxes` parity checks.
+- `xml-sax-ts ... no-position` is useful for peak throughput, but not a default-to-default comparison.
 
 These values are machine-dependent; rerun on your hardware for release-quality numbers.
+
+Current status: high-confidence comparable runs now show `xml-sax-ts` within 1% of `saxes` on `xmlns=false` and faster than `saxes` on `xmlns=true`.
 
 ## API
 
@@ -254,6 +275,12 @@ new XmlSaxParser(options?: ParserOptions)
 By default (`coalesceText: false`), streaming input can produce multiple consecutive `onText` callbacks that are logically adjacent. Enable `coalesceText: true` to receive one merged text callback per structural boundary.
 
 `trackPosition` controls line/column tracking for parser errors. When set to `false`, parsing is faster and `XmlSaxError` still reports `offset`, while `line` and `column` are set to `0`.
+
+Event payload note (breaking change): with `xmlns: false`, parser events now emit plain-mode tag shapes aligned with `saxes` performance semantics.
+
+- `onOpenTag(tag).attributes` values are strings (not `XmlAttribute` objects)
+- `onOpenTag(tag)` and `onCloseTag(tag)` omit `prefix`, `local`, and `uri`
+- With `xmlns: true`, full namespace metadata remains present
 
 ### `parseXmlString(xml, options?)`
 

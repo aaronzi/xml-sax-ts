@@ -38,6 +38,39 @@ describe("XmlSaxParser", () => {
     ]);
   });
 
+  it("emits plain-mode attributes as strings", () => {
+    const seenOpen: { attr: string; hasPrefix: boolean; hasLocal: boolean; hasUri: boolean }[] = [];
+    const seenClose: { hasPrefix: boolean; hasLocal: boolean; hasUri: boolean }[] = [];
+    const parser = new XmlSaxParser({
+      xmlns: false,
+      onOpenTag: (tag) => {
+        if (tag.name === "a") {
+          seenOpen.push({
+            attr: typeof tag.attributes.x === "string" ? tag.attributes.x : "",
+            hasPrefix: "prefix" in tag,
+            hasLocal: "local" in tag,
+            hasUri: "uri" in tag
+          });
+        }
+      },
+      onCloseTag: (tag) => {
+        if (tag.name === "a") {
+          seenClose.push({
+            hasPrefix: "prefix" in tag,
+            hasLocal: "local" in tag,
+            hasUri: "uri" in tag
+          });
+        }
+      }
+    });
+
+    parser.feed("<a x='1'/>");
+    parser.close();
+
+    expect(seenOpen).toEqual([{ attr: "1", hasPrefix: false, hasLocal: false, hasUri: false }]);
+    expect(seenClose).toEqual([{ hasPrefix: false, hasLocal: false, hasUri: false }]);
+  });
+
   it("parses cdata and entities", () => {
     const events: string[] = [];
     const parser = new XmlSaxParser({

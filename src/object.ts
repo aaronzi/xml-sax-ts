@@ -44,11 +44,13 @@ export function resolveName(
   value: string | Pick<OpenTag, "name" | "prefix" | "local" | "uri">
 ): { name: string; localName: string; prefix: string; uri: string } {
   if (typeof value !== "string") {
+    const prefix = value.prefix ?? "";
+    const local = value.local ?? (prefix ? value.name.slice(prefix.length + 1) : value.name);
     return {
       name: value.name,
-      localName: value.local,
-      prefix: value.prefix,
-      uri: value.uri
+      localName: local,
+      prefix,
+      uri: value.uri ?? ""
     };
   }
 
@@ -205,13 +207,13 @@ function normalizeXmlName(name: string, options: XmlBuilderSettings): string {
 }
 
 function normalizeAttributes(
-  attributes: Record<string, XmlAttribute>,
+  attributes: Record<string, XmlAttribute | string>,
   options: ObjectBuilderSettings
 ): Record<string, string> {
   const result: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [key, attr] of Object.entries(attributes)) {
     const name = normalizeName(key, options);
-    result[name] = attr.value;
+    result[name] = typeof attr === "string" ? attr : attr.value;
   }
   return result;
 }

@@ -14,7 +14,7 @@ type NamespaceMap = Record<string, string>;
 
 interface StackEntry {
   rawName: string;
-  resolved: ResolvedName;
+  closeTag: CloseTag;
 }
 
 interface RawAttribute {
@@ -42,8 +42,41 @@ const DEFAULT_OPTIONS: Required<
 const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE_URI = "http://www.w3.org/2000/xmlns/";
 
+const NAME_START_TABLE = new Uint8Array(128);
+const NAME_CHAR_TABLE = new Uint8Array(128);
+
+for (let code = 65; code <= 90; code += 1) {
+  NAME_START_TABLE[code] = 1;
+  NAME_CHAR_TABLE[code] = 1;
+}
+for (let code = 97; code <= 122; code += 1) {
+  NAME_START_TABLE[code] = 1;
+  NAME_CHAR_TABLE[code] = 1;
+}
+for (let code = 48; code <= 57; code += 1) {
+  NAME_CHAR_TABLE[code] = 1;
+}
+NAME_START_TABLE[95] = 1;
+NAME_CHAR_TABLE[95] = 1;
+NAME_CHAR_TABLE[58] = 1;
+NAME_CHAR_TABLE[45] = 1;
+NAME_CHAR_TABLE[46] = 1;
+
 export class XmlSaxParser {
   private options: ParserOptions;
+  private readonly xmlns: boolean;
+  private readonly includeNamespaceAttributes: boolean;
+  private readonly allowDoctype: boolean;
+  private readonly coalesceText: boolean;
+  private readonly trackPosition: boolean;
+  private readonly onOpenTag: ((tag: OpenTag) => void) | undefined;
+  private readonly onCloseTag: ((tag: CloseTag) => void) | undefined;
+  private readonly onText: ((text: string) => void) | undefined;
+  private readonly onCdata: ((text: string) => void) | undefined;
+  private readonly onComment: ((text: string) => void) | undefined;
+  private readonly onProcessingInstruction: ((pi: ProcessingInstruction) => void) | undefined;
+  private readonly onDoctype: ((doctype: Doctype) => void) | undefined;
+  private readonly onError: ((error: Error) => void) | undefined;
   private buffer = "";
   private offset = 0;
   private line = 1;
@@ -61,6 +94,19 @@ export class XmlSaxParser {
 
   constructor(options: ParserOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.xmlns = this.options.xmlns ?? true;
+    this.includeNamespaceAttributes = this.options.includeNamespaceAttributes ?? false;
+    this.allowDoctype = this.options.allowDoctype ?? true;
+    this.coalesceText = this.options.coalesceText ?? false;
+    this.trackPosition = this.options.trackPosition ?? true;
+    this.onOpenTag = this.options.onOpenTag;
+    this.onCloseTag = this.options.onCloseTag;
+    this.onText = this.options.onText;
+    this.onCdata = this.options.onCdata;
+    this.onComment = this.options.onComment;
+    this.onProcessingInstruction = this.options.onProcessingInstruction;
+    this.onDoctype = this.options.onDoctype;
+    this.onError = this.options.onError;
   }
 
   feed(chunk: string): void {
@@ -97,12 +143,21 @@ export class XmlSaxParser {
       const lt = this.buffer.indexOf("<", i);
       if (lt === -1) {
         const tail = this.buffer.slice(i);
-        const split = splitTextForEntities(tail);
-        if (split.emit.length > 0) {
-          this._emitText(split.emit, true);
-          this._advance(split.emit);
+        if (!tail.includes("&")) {
+          if (tail.length > 0) {
+            this._emitText(tail, true);
+            this._advance(tail);
+          }
+        } else {
+          const split = splitTextForEntities(tail);
+          if (split.emit.length > 0) {
+            this._emitText(split.emit, true);
+            this._advance(split.emit);
+          }
+          this.buffer = split.carry;
+          return;
         }
-        this.buffer = split.carry;
+        this.buffer = "";
         return;
       }
 
@@ -136,38 +191,9 @@ export class XmlSaxParser {
 
     this._flushPendingCR();
 
-    if (this.buffer.startsWith("<!--", start)) {
-      const end = this.buffer.indexOf("-->", start + 4);
-      if (end === -1) {
-        if (final) {
-          this._error("Unterminated comment");
-        }
-        return null;
-      }
-      const comment = this.buffer.slice(start + 4, end);
-      this._flushTextBuffer();
-      this.options.onComment?.(comment);
-      return end + 3 - start;
-    }
+    const second = this.buffer[start + 1];
 
-    if (this.buffer.startsWith("<![CDATA[", start)) {
-      const end = this.buffer.indexOf("]]>", start + 9);
-      if (end === -1) {
-        if (final) {
-          this._error("Unterminated CDATA section");
-        }
-        return null;
-      }
-      const cdata = this.buffer.slice(start + 9, end);
-      const normalized = this._normalizeText(cdata, false);
-      if (normalized.length > 0) {
-        this._flushTextBuffer();
-        this.options.onCdata?.(normalized);
-      }
-      return end + 3 - start;
-    }
-
-    if (this.buffer.startsWith("<?", start)) {
+    if (second === "?") {
       const end = this.buffer.indexOf("?>", start + 2);
       if (end === -1) {
         if (final) {
@@ -181,29 +207,64 @@ export class XmlSaxParser {
       const data = split === -1 ? "" : body.slice(split).trim();
       const pi: ProcessingInstruction = { target, body: data };
       this._flushTextBuffer();
-      this.options.onProcessingInstruction?.(pi);
+      this.onProcessingInstruction?.(pi);
       return end + 2 - start;
     }
 
-    if (this.buffer.startsWith("<!DOCTYPE", start)) {
-      const end = this._findDoctypeEnd(start + 9);
-      if (end === -1) {
-        if (final) {
-          this._error("Unterminated doctype declaration");
+    if (second === "!") {
+      const third = this.buffer[start + 2];
+
+      if (third === "-" && this.buffer[start + 3] === "-") {
+        const end = this.buffer.indexOf("-->", start + 4);
+        if (end === -1) {
+          if (final) {
+            this._error("Unterminated comment");
+          }
+          return null;
         }
-        return null;
+        const comment = this.buffer.slice(start + 4, end);
+        this._flushTextBuffer();
+        this.onComment?.(comment);
+        return end + 3 - start;
       }
-      if (!this.options.allowDoctype) {
-        this._error("Doctype is not allowed");
+
+      if (third === "[" && this.buffer.startsWith("<![CDATA[", start)) {
+        const end = this.buffer.indexOf("]]>", start + 9);
+        if (end === -1) {
+          if (final) {
+            this._error("Unterminated CDATA section");
+          }
+          return null;
+        }
+        const cdata = this.buffer.slice(start + 9, end);
+        const normalized = this._normalizeText(cdata, false);
+        if (normalized.length > 0) {
+          this._flushTextBuffer();
+          this.onCdata?.(normalized);
+        }
+        return end + 3 - start;
       }
-      const raw = this.buffer.slice(start + 9, end).trim();
-      const doctype: Doctype = { raw };
-      this._flushTextBuffer();
-      this.options.onDoctype?.(doctype);
-      return end + 1 - start;
+
+      if (third === "D" && this.buffer.startsWith("<!DOCTYPE", start)) {
+        const end = this._findDoctypeEnd(start + 9);
+        if (end === -1) {
+          if (final) {
+            this._error("Unterminated doctype declaration");
+          }
+          return null;
+        }
+        if (!this.allowDoctype) {
+          this._error("Doctype is not allowed");
+        }
+        const raw = this.buffer.slice(start + 9, end).trim();
+        const doctype: Doctype = { raw };
+        this._flushTextBuffer();
+        this.onDoctype?.(doctype);
+        return end + 1 - start;
+      }
     }
 
-    if (this.buffer.startsWith("</", start)) {
+    if (second === "/") {
       const end = this.buffer.indexOf(">", start + 2);
       if (end === -1) {
         if (final) {
@@ -211,11 +272,14 @@ export class XmlSaxParser {
         }
         return null;
       }
-      const raw = this.buffer.slice(start + 2, end).trim();
-      const parsed = this._parseName(raw, 0, raw.length);
-      if (raw.slice(parsed.end).trim().length > 0) {
+
+      let i = this._skipWhitespace(this.buffer, start + 2, end);
+      const parsed = this._parseName(this.buffer, i, end);
+      i = this._skipWhitespace(this.buffer, parsed.end, end);
+      if (i !== end) {
         this._error("Invalid closing tag");
       }
+
       this._handleCloseTag(parsed.name);
       return end + 1 - start;
     }
@@ -238,63 +302,58 @@ export class XmlSaxParser {
     const parsed = this._parseStartTagRange(start, end);
     const selfClosing = parsed.selfClosing;
 
-    if (!this.options.xmlns) {
-      const resolvedName = this._resolveNameNoXmlns(parsed.name);
-      const attributes: Record<string, XmlAttribute> = {};
+    if (!this.xmlns) {
+      const plainName = parsed.name;
+      const attributes: Record<string, XmlAttribute | string> = Object.create(null) as Record<
+        string,
+        XmlAttribute | string
+      >;
 
       for (const attr of parsed.attributes) {
-        const resolvedAttr = this._resolveNameNoXmlns(attr.name);
-        attributes[resolvedAttr.name] = {
-          name: resolvedAttr.name,
-          value: attr.value,
-          prefix: resolvedAttr.prefix,
-          local: resolvedAttr.local,
-          uri: ""
-        };
+        attributes[attr.name] = attr.value;
       }
 
       const tag: OpenTag = {
-        name: resolvedName.name,
-        prefix: resolvedName.prefix,
-        local: resolvedName.local,
-        uri: "",
+        name: plainName,
         attributes,
         isSelfClosing: selfClosing
       };
 
-      this.options.onOpenTag?.(tag);
+      this.onOpenTag?.(tag);
 
       if (selfClosing) {
-        this.options.onCloseTag?.({
-          name: resolvedName.name,
-          prefix: resolvedName.prefix,
-          local: resolvedName.local,
-          uri: ""
-        });
+        this.onCloseTag?.({ name: plainName });
         return;
       }
 
-      this.elementStack.push({ rawName: parsed.name, resolved: resolvedName });
+      this.elementStack.push({
+        rawName: parsed.name,
+        closeTag: { name: plainName }
+      });
       return;
     }
 
-    let ns = this._currentNs();
-    if (this.options.xmlns) {
-      ns = Object.create(ns) as NamespaceMap;
-      for (const attr of parsed.attributes) {
-        if (attr.name === "xmlns") {
-          ns[""] = attr.value;
-        } else if (attr.name.startsWith("xmlns:")) {
-          ns[attr.name.slice(6)] = attr.value;
+    const parentNs = this._currentNs();
+    let ns = parentNs;
+    for (const attr of parsed.attributes) {
+      if (attr.name === "xmlns") {
+        if (ns === parentNs) {
+          ns = Object.create(parentNs) as NamespaceMap;
         }
+        ns[""] = attr.value;
+      } else if (attr.name.startsWith("xmlns:")) {
+        if (ns === parentNs) {
+          ns = Object.create(parentNs) as NamespaceMap;
+        }
+        ns[attr.name.slice(6)] = attr.value;
       }
     }
 
     const resolvedName = this._resolveName(parsed.name, ns);
-    const attributes: Record<string, XmlAttribute> = {};
+    const attributes: Record<string, XmlAttribute> = Object.create(null) as Record<string, XmlAttribute>;
 
     for (const attr of parsed.attributes) {
-      if (this.options.xmlns && !this.options.includeNamespaceAttributes) {
+      if (!this.includeNamespaceAttributes) {
         if (attr.name === "xmlns" || attr.name.startsWith("xmlns:")) {
           continue;
         }
@@ -318,20 +377,27 @@ export class XmlSaxParser {
       isSelfClosing: selfClosing
     };
 
-    this.options.onOpenTag?.(tag);
+    this.onOpenTag?.(tag);
 
     if (selfClosing) {
-      const closeTag: CloseTag = {
+      this.onCloseTag?.({
         name: resolvedName.name,
         prefix: resolvedName.prefix,
         local: resolvedName.local,
         uri: resolvedName.uri
-      };
-      this.options.onCloseTag?.(closeTag);
+      });
       return;
     }
 
-    this.elementStack.push({ rawName: parsed.name, resolved: resolvedName });
+    this.elementStack.push({
+      rawName: parsed.name,
+      closeTag: {
+        name: resolvedName.name,
+        prefix: resolvedName.prefix,
+        local: resolvedName.local,
+        uri: resolvedName.uri
+      }
+    });
     this.nsStack.push(ns);
   }
 
@@ -387,7 +453,7 @@ export class XmlSaxParser {
 
       const rawValue = this.buffer.slice(i, valueEnd);
       const normalized = rawValue.includes("\r") ? rawValue.replace(/\r\n?/g, "\n") : rawValue;
-      const value = decodeEntities(normalized, this.options.onError);
+      const value = !normalized.includes("&") ? normalized : decodeEntities(normalized, this.onError);
       attributes.push({ name: attrName.name, value });
       i = valueEnd + 1;
     }
@@ -399,7 +465,7 @@ export class XmlSaxParser {
     this._flushTextBuffer();
 
     const entry = this.elementStack.pop();
-    const ns = this.options.xmlns ? this.nsStack.pop() : this._currentNs();
+    const ns = this.xmlns ? this.nsStack.pop() : this._currentNs();
 
     if (!entry || !ns) {
       this._error("Closing tag without matching start tag");
@@ -409,14 +475,7 @@ export class XmlSaxParser {
       this._error(`Mismatched closing tag: expected </${entry.rawName}>`);
     }
 
-    const closeTag: CloseTag = {
-      name: entry.resolved.name,
-      prefix: entry.resolved.prefix,
-      local: entry.resolved.local,
-      uri: entry.resolved.uri
-    };
-
-    this.options.onCloseTag?.(closeTag);
+    this.onCloseTag?.(entry.closeTag);
   }
 
   private _emitText(text: string, allowPendingCR: boolean): void {
@@ -424,30 +483,36 @@ export class XmlSaxParser {
     if (normalized.length === 0) {
       return;
     }
-    const decoded = decodeEntities(normalized, this.options.onError);
+
+    if (!normalized.includes("&")) {
+      this._emitDecodedText(normalized);
+      return;
+    }
+
+    const decoded = decodeEntities(normalized, this.onError);
     if (decoded.length > 0) {
       this._emitDecodedText(decoded);
     }
   }
 
   private _emitDecodedText(text: string): void {
-    if (!this.options.coalesceText) {
-      this.options.onText?.(text);
+    if (!this.coalesceText) {
+      this.onText?.(text);
       return;
     }
     this.pendingText += text;
   }
 
   private _flushTextBuffer(): void {
-    if (!this.options.coalesceText || this.pendingText.length === 0) {
+    if (!this.coalesceText || this.pendingText.length === 0) {
       return;
     }
-    this.options.onText?.(this.pendingText);
+    this.onText?.(this.pendingText);
     this.pendingText = "";
   }
 
   private _resolveName(rawName: string, ns: NamespaceMap): ResolvedName {
-    if (!this.options.xmlns) {
+    if (!this.xmlns) {
       const split = rawName.indexOf(":");
       if (split === -1) {
         return { name: rawName, prefix: "", local: rawName, uri: "" };
@@ -498,7 +563,7 @@ export class XmlSaxParser {
   }
 
   private _resolveAttributeName(rawName: string, ns: NamespaceMap): ResolvedName {
-    if (!this.options.xmlns) {
+    if (!this.xmlns) {
       return this._resolveName(rawName, ns);
     }
 
@@ -537,6 +602,24 @@ export class XmlSaxParser {
   }
 
   private _findTagEnd(start: number): number {
+    const quickEnd = this.buffer.indexOf(">", start);
+    if (quickEnd === -1) {
+      return -1;
+    }
+
+    const firstDoubleQuote = this.buffer.indexOf("\"", start);
+    const firstSingleQuote = this.buffer.indexOf("'", start);
+    const firstQuote =
+      firstDoubleQuote === -1
+        ? firstSingleQuote
+        : firstSingleQuote === -1
+          ? firstDoubleQuote
+          : Math.min(firstDoubleQuote, firstSingleQuote);
+
+    if (firstQuote === -1 || firstQuote > quickEnd) {
+      return quickEnd;
+    }
+
     let quote: string | null = null;
     for (let i = start; i < this.buffer.length; i += 1) {
       const ch = this.buffer[i];
@@ -598,14 +681,19 @@ export class XmlSaxParser {
     if (first === undefined) {
       this._error("Expected name");
     }
-    if (!this._isNameStartCode(first.charCodeAt(0))) {
+    const firstCode = first.charCodeAt(0);
+    if (firstCode >= 128 || NAME_START_TABLE[firstCode] === 0) {
       this._error(`Invalid name start: '${first}'`);
     }
 
     let i = start + 1;
     while (i < end) {
       const ch = input[i];
-      if (ch === undefined || !this._isNameCharCode(ch.charCodeAt(0))) {
+      if (ch === undefined) {
+        break;
+      }
+      const code = ch.charCodeAt(0);
+      if (code >= 128 || NAME_CHAR_TABLE[code] === 0) {
         break;
       }
       i += 1;
@@ -614,36 +702,19 @@ export class XmlSaxParser {
     return { name: input.slice(start, i), end: i };
   }
 
-  private _isNameStartCode(code: number): boolean {
-    return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
-  }
-
-  private _isNameCharCode(code: number): boolean {
-    return (
-      (code >= 65 && code <= 90) ||
-      (code >= 97 && code <= 122) ||
-      (code >= 48 && code <= 57) ||
-      code === 95 ||
-      code === 58 ||
-      code === 45 ||
-      code === 46
-    );
-  }
-
   private _skipWhitespace(input: string, start: number, end: number): number {
     let i = start;
     while (i < end) {
       const ch = input[i];
-      if (ch === undefined || !this._isWhitespace(ch)) {
+      if (ch === undefined) {
+        break;
+      }
+      if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r") {
         break;
       }
       i += 1;
     }
     return i;
-  }
-
-  private _isWhitespace(ch: string): boolean {
-    return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
   }
 
   private _currentNs(): NamespaceMap {
@@ -652,19 +723,24 @@ export class XmlSaxParser {
 
   private _advance(text: string): void {
     this.offset += text.length;
-    if (!this.options.trackPosition) {
+    if (!this.trackPosition) {
       return;
     }
-    const lastNewline = text.lastIndexOf("\n");
-    if (lastNewline === -1) {
+
+    let newlineCount = 0;
+    let lastNewline = -1;
+    for (let i = 0; i < text.length; i += 1) {
+      if (text.charCodeAt(i) === 10) {
+        newlineCount += 1;
+        lastNewline = i;
+      }
+    }
+
+    if (newlineCount === 0) {
       this.column += text.length;
       return;
     }
 
-    let newlineCount = 1;
-    for (let i = text.indexOf("\n"); i !== -1 && i < lastNewline; i = text.indexOf("\n", i + 1)) {
-      newlineCount += 1;
-    }
     this.line += newlineCount;
     this.column = text.length - lastNewline;
   }
@@ -672,6 +748,11 @@ export class XmlSaxParser {
   private _normalizeText(text: string, allowPendingCR: boolean): string {
     if (!text) {
       return "";
+    }
+
+    // Fast path for common chunks: no CR handling and no pending state.
+    if (!this.pendingCR && !text.includes("\r")) {
+      return text;
     }
 
     let value = text;
@@ -690,14 +771,14 @@ export class XmlSaxParser {
       value = value.slice(0, -1);
     }
 
-    const normalized = value.includes("\r") ? value.replace(/\r\n?/g, "\n") : value;
-    return prefix.length > 0 ? `${prefix}${normalized}` : normalized;
+    const normalized = !value.includes("\r") ? value : value.replace(/\r\n?/g, "\n");
+    return prefix ? `${prefix}${normalized}` : normalized;
   }
 
   private _advanceSpan(start: number, end: number): void {
     const length = end - start;
     this.offset += length;
-    if (!this.options.trackPosition) {
+    if (!this.trackPosition) {
       return;
     }
 
@@ -728,10 +809,10 @@ export class XmlSaxParser {
   }
 
   private _error(message: string): never {
-    const line = this.options.trackPosition ? this.line : 0;
-    const column = this.options.trackPosition ? this.column : 0;
+    const line = this.trackPosition ? this.line : 0;
+    const column = this.trackPosition ? this.column : 0;
     const error = new XmlSaxError(message, this.offset, line, column);
-    this.options.onError?.(error);
+    this.onError?.(error);
     throw error;
   }
 }

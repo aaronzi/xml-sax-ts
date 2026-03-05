@@ -6,20 +6,20 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
     return input;
   }
 
-  const parts: string[] = [];
+  let result = "";
   let i = 0;
 
   while (i < input.length) {
     const amp = input.indexOf("&", i);
     if (amp === -1) {
-      if (i < input.length) {
-        parts.push(input.slice(i));
+      if (i === 0) {
+        return input;
       }
-      break;
+      return i < input.length ? result + input.slice(i) : result;
     }
 
     if (amp > i) {
-      parts.push(input.slice(i, amp));
+      result += input.slice(i, amp);
     }
 
     const semi = input.indexOf(";", amp + 1);
@@ -46,11 +46,11 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
       throw err;
     }
 
-    parts.push(decoded);
+    result += decoded;
     i = semi + 1;
   }
 
-  return parts.join("");
+  return result;
 }
 
 function decodeNamedEntity(input: string, start: number, end: number): string | undefined {
@@ -166,8 +166,7 @@ export function splitTextForEntities(text: string): { emit: string; carry: strin
     return { emit: text, carry: "" };
   }
 
-  const lastSemi = text.lastIndexOf(";");
-  if (lastSemi < lastAmp) {
+  if (!text.includes(";", lastAmp + 1)) {
     return {
       emit: text.slice(0, lastAmp),
       carry: text.slice(lastAmp)

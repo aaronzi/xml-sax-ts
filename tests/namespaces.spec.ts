@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { XmlSaxError, XmlSaxParser } from "../src/index";
+import { getAttrUri } from "./helpers";
 
 const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
 
@@ -23,8 +24,8 @@ describe("namespaces", () => {
       onOpenTag: (tag) => {
         seen.push({ name: tag.name, uri: tag.uri });
         if (tag.name === "root") {
-          rootAttrUri = tag.attributes.a?.uri ?? "";
-          prefixedAttrUri = tag.attributes["p:b"]?.uri ?? "";
+          rootAttrUri = getAttrUri(tag, "a");
+          prefixedAttrUri = getAttrUri(tag, "p:b");
         }
       }
     });
@@ -80,7 +81,7 @@ describe("namespaces", () => {
     const parser = new XmlSaxParser({
       xmlns: true,
       onOpenTag: (tag) => {
-        xmlLangUri = tag.attributes["xml:lang"]?.uri ?? "";
+        xmlLangUri = getAttrUri(tag, "xml:lang");
       }
     });
 

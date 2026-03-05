@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { XmlSaxParser } from "../src/index";
+import { getAttrValue } from "./helpers";
 
 describe("line ending normalization", () => {
   it("normalizes CRLF and CR in text across chunks", () => {
@@ -20,7 +21,7 @@ describe("line ending normalization", () => {
     let value = "";
     const parser = new XmlSaxParser({
       onOpenTag: (tag) => {
-        value = tag.attributes.a?.value ?? "";
+        value = getAttrValue(tag, "a");
       }
     });
 

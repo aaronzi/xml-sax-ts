@@ -14,18 +14,18 @@ export interface XmlAttribute {
 
 export interface OpenTag {
   name: string;
-  prefix: string;
-  local: string;
-  uri: string;
-  attributes: Record<string, XmlAttribute>;
+  prefix?: string;
+  local?: string;
+  uri?: string;
+  attributes: Record<string, XmlAttribute | string>;
   isSelfClosing: boolean;
 }
 
 export interface CloseTag {
   name: string;
-  prefix: string;
-  local: string;
-  uri: string;
+  prefix?: string;
+  local?: string;
+  uri?: string;
 }
 
 export interface ProcessingInstruction {
