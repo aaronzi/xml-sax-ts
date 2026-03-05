@@ -193,6 +193,31 @@ Latest local sample (`npm run bench:quick`, Node `v24.7.0`):
 - `xml-sax-ts:sax (xmlns=false no-position)` vs `saxes (xmlns=false)`: `0.925x`
 - `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.092x`
 
+Benchmark visualization (same sample run):
+
+```mermaid
+xychart-beta
+  title "SAX Throughput (xmlns=false)"
+  x-axis ["xml-sax-ts", "xml-sax-ts no-position", "sax", "saxes"]
+  y-axis "ops/s" 0 --> 24000
+  bar [18752.5, 21613.05, 8571.82, 23359.67]
+```
+
+```mermaid
+xychart-beta
+  title "Object/Tree Throughput"
+  x-axis ["xml-sax-ts tree", "fast-xml-parser object"]
+  y-axis "ops/s" 0 --> 7000
+  bar [6723.7, 6155.43]
+```
+
+Legend: `xml-sax-ts` bars are the first bars in each chart.
+
+Best comparable result to `saxes`:
+
+- Use `xml-sax-ts:sax single-feed xmlns=false` (`18,752.50 ops/s`) vs `saxes:single-feed xmlns=false` (`23,359.67 ops/s`).
+- `xml-sax-ts ... no-position` is useful for peak throughput, but not a fair default-to-default comparison.
+
 These values are machine-dependent; rerun on your hardware for release-quality numbers.
 
 ## API
