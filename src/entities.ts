@@ -1,13 +1,5 @@
 import { XmlSaxError } from "./errors";
 
-const NAMED_ENTITIES: Record<string, string> = {
-  lt: "<",
-  gt: ">",
-  amp: "&",
-  quot: "\"",
-  apos: "'"
-};
-
 export function decodeEntities(input: string, onError?: (error: Error) => void): string {
   const firstAmp = input.indexOf("&");
   if (firstAmp === -1) {
@@ -37,20 +29,18 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
       throw err;
     }
 
-    const entity = input.slice(amp + 1, semi);
     let decoded: string | undefined;
+    const marker = input[amp + 1];
 
-    if (entity.startsWith("#x") || entity.startsWith("#X")) {
-      const codePoint = Number.parseInt(entity.slice(2), 16);
-      decoded = decodeCodePoint(codePoint);
-    } else if (entity.startsWith("#")) {
-      const codePoint = Number.parseInt(entity.slice(1), 10);
-      decoded = decodeCodePoint(codePoint);
+    if (marker === "#") {
+      const numeric = parseNumericEntity(input, amp + 2, semi);
+      decoded = numeric === undefined ? undefined : decodeCodePoint(numeric);
     } else {
-      decoded = NAMED_ENTITIES[entity];
+      decoded = decodeNamedEntity(input, amp + 1, semi);
     }
 
     if (decoded === undefined) {
+      const entity = input.slice(amp + 1, semi);
       const err = new XmlSaxError(`Unknown entity: &${entity};`, amp, 0, 0);
       onError?.(err);
       throw err;
@@ -61,6 +51,100 @@ export function decodeEntities(input: string, onError?: (error: Error) => void):
   }
 
   return parts.join("");
+}
+
+function decodeNamedEntity(input: string, start: number, end: number): string | undefined {
+  const len = end - start;
+  if (len === 2) {
+    if (input[start] === "l" && input[start + 1] === "t") {
+      return "<";
+    }
+    if (input[start] === "g" && input[start + 1] === "t") {
+      return ">";
+    }
+    return undefined;
+  }
+
+  if (len === 3) {
+    if (input[start] === "a" && input[start + 1] === "m" && input[start + 2] === "p") {
+      return "&";
+    }
+    return undefined;
+  }
+
+  if (len === 4) {
+    const maybeQuot =
+      input[start] === "q" && input[start + 1] === "u" && input[start + 2] === "o" && input[start + 3] === "t";
+    if (maybeQuot) {
+      return "\"";
+    }
+
+    const maybeApos =
+      input[start] === "a" && input[start + 1] === "p" && input[start + 2] === "o" && input[start + 3] === "s";
+    if (maybeApos) {
+      return "'";
+    }
+  }
+
+  return undefined;
+}
+
+function parseNumericEntity(input: string, start: number, end: number): number | undefined {
+  if (start >= end) {
+    return undefined;
+  }
+
+  let i = start;
+  let radix = 10;
+
+  const marker = input[i];
+  if (marker === "x" || marker === "X") {
+    radix = 16;
+    i += 1;
+  }
+
+  if (i >= end) {
+    return undefined;
+  }
+
+  let value = 0;
+  for (; i < end; i += 1) {
+    const ch = input[i];
+    if (ch === undefined) {
+      return undefined;
+    }
+
+    const digit = radix === 16 ? hexDigit(ch) : decimalDigit(ch);
+    if (digit === -1) {
+      return undefined;
+    }
+
+    value = value * radix + digit;
+  }
+
+  return value;
+}
+
+function decimalDigit(ch: string): number {
+  const code = ch.charCodeAt(0) - 48;
+  if (code < 0 || code > 9) {
+    return -1;
+  }
+  return code;
+}
+
+function hexDigit(ch: string): number {
+  const code = ch.charCodeAt(0);
+  if (code >= 48 && code <= 57) {
+    return code - 48;
+  }
+  if (code >= 65 && code <= 70) {
+    return code - 55;
+  }
+  if (code >= 97 && code <= 102) {
+    return code - 87;
+  }
+  return -1;
 }
 
 function decodeCodePoint(codePoint: number): string | undefined {
@@ -82,8 +166,8 @@ export function splitTextForEntities(text: string): { emit: string; carry: strin
     return { emit: text, carry: "" };
   }
 
-  const nextSemi = text.indexOf(";", lastAmp + 1);
-  if (nextSemi === -1) {
+  const lastSemi = text.lastIndexOf(";");
+  if (lastSemi < lastAmp) {
     return {
       emit: text.slice(0, lastAmp),
       carry: text.slice(lastAmp)

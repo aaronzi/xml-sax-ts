@@ -127,6 +127,74 @@ const xml = serializeXml(
 // </root>
 ```
 
+## Benchmarking
+
+Run the reproducible benchmark harness:
+
+```bash
+npm run bench
+```
+
+Quick run (fewer rounds):
+
+```bash
+npm run bench:quick
+```
+
+The benchmark now runs multiple rounds and reports median/mean/stddev for better comparability.
+
+- `xml-sax-ts:sax` scenarios measure streaming event parsing
+- `xml-sax-ts:sax` scenarios include explicit `xmlns=true/false` modes
+- `xml-sax-ts:sax ... no-position` shows upper-bound throughput with `trackPosition: false`
+- `xml-sax-ts:tree` scenario measures full tree parsing (`parseXmlString`)
+- `sax` and `saxes` scenarios provide common SAX parser comparisons
+- `fast-xml-parser` scenarios measure object parsing on the same input corpus
+
+`fast-xml-parser`, `sax`, and `saxes` are included as dev dependencies so comparison is available out of the box.
+
+Example output includes a direct ratio line:
+
+`Comparable parse ratio (xml-sax-ts:sax vs fast-xml-parser:object): ...x`
+
+Note: SAX event parsing and object materialization are not identical workloads. Use the tree scenario for a closer semantic comparison.
+
+### Benchmark Methodology
+
+- Benchmark command: `npm run bench`
+- Runtime: Node `v24.7.0`
+- Benchmark config defaults: `BENCH_ROUNDS=5`, `BENCH_MIN_MS=1200`, `BENCH_WARMUP=10`
+- Corpus: repeated fixture corpus (`basic.xml`, `mixed.xml`, `namespaces.xml`) plus an entity-heavy synthetic case
+- Output metric: median ops/s across rounds (with mean and stddev also shown)
+
+### Benchmark Environment
+
+- Published sample run device: MacBook Pro M4
+- Memory: 48 GB RAM
+- CPU: 14-core CPU
+- GPU: 20-core GPU
+
+GPU is not used by these Node.js parser benchmarks, but listed for full machine disclosure.
+
+Latest local sample (`npm run bench:quick`, Node `v24.7.0`):
+
+| Scenario | Median ops/s |
+| --- | ---: |
+| `xml-sax-ts:sax single-feed xmlns=true` | 8,842.13 |
+| `xml-sax-ts:sax single-feed xmlns=false` | 18,752.50 |
+| `xml-sax-ts:sax single-feed xmlns=false no-position` | 21,613.05 |
+| `sax:single-feed xmlns=false` | 8,571.82 |
+| `saxes:single-feed xmlns=false` | 23,359.67 |
+| `xml-sax-ts:tree parseXmlString` | 6,723.70 |
+| `fast-xml-parser:object parse` | 6,155.43 |
+
+- `xml-sax-ts:sax (xmlns=false)` vs `sax (xmlns=false)`: `2.188x`
+- `xml-sax-ts:sax (xmlns=true)` vs `sax (xmlns=true)`: `1.716x`
+- `xml-sax-ts:sax (xmlns=false)` vs `saxes (xmlns=false)`: `0.803x`
+- `xml-sax-ts:sax (xmlns=false no-position)` vs `saxes (xmlns=false)`: `0.925x`
+- `xml-sax-ts:tree` vs `fast-xml-parser:object`: `1.092x`
+
+These values are machine-dependent; rerun on your hardware for release-quality numbers.
+
 ## API
 
 ### `XmlSaxParser`
@@ -148,6 +216,7 @@ new XmlSaxParser(options?: ParserOptions)
 | `includeNamespaceAttributes`  | `boolean`  | `false` | Include `xmlns:*` attributes in tag output     |
 | `allowDoctype`                | `boolean`  | `true`  | Allow `<!DOCTYPE …>` declarations              |
 | `coalesceText`                | `boolean`  | `false` | Merge adjacent text callbacks into one event   |
+| `trackPosition`               | `boolean`  | `true`  | Track line/column; disable for faster parsing  |
 | `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag     |
 | `onCloseTag`                  | `function` | —       | Called for each closing tag                    |
 | `onText`                      | `function` | —       | Called for text nodes                          |
@@ -158,6 +227,8 @@ new XmlSaxParser(options?: ParserOptions)
 | `onError`                     | `function` | —       | Called on parse errors                         |
 
 By default (`coalesceText: false`), streaming input can produce multiple consecutive `onText` callbacks that are logically adjacent. Enable `coalesceText: true` to receive one merged text callback per structural boundary.
+
+`trackPosition` controls line/column tracking for parser errors. When set to `false`, parsing is faster and `XmlSaxError` still reports `offset`, while `line` and `column` are set to `0`.
 
 ### `parseXmlString(xml, options?)`
 

@@ -49,5 +49,14 @@ export default [
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off"
     }
+  },
+  {
+    files: ["benchmarks/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly"
+      }
+    }
   }
 ];

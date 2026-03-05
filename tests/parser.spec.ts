@@ -91,6 +91,27 @@ describe("XmlSaxParser", () => {
 
     expect(texts).toEqual(["a", "c"]);
   });
+
+  it("supports self-closing tags with surrounding whitespace", () => {
+    const events: string[] = [];
+    const parser = new XmlSaxParser({
+      onOpenTag: (tag) => events.push(`open:${tag.name}:${String(tag.isSelfClosing)}`),
+      onCloseTag: (tag) => events.push(`close:${tag.name}`)
+    });
+
+    parser.feed("<root><a x='1' /></root>");
+    parser.close();
+
+    expect(events).toEqual(["open:root:false", "open:a:true", "close:a", "close:root"]);
+  });
+
+  it("rejects invalid self-closing syntax", () => {
+    const parser = new XmlSaxParser();
+    expect(() => {
+      parser.feed("<root><a / x='1'></a></root>");
+      parser.close();
+    }).toThrow();
+  });
 });
 
 describe("parseXmlString", () => {

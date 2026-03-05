@@ -72,4 +72,17 @@ describe("error handling", () => {
 
     expect(error).toBeInstanceOf(XmlSaxError);
   });
+
+  it("can disable line/column tracking for faster parsing", () => {
+    const parser = new XmlSaxParser({ trackPosition: false });
+    const error = captureError(() => {
+      parser.feed("<root>\n</rot>");
+      parser.close();
+    });
+
+    expect(error).toBeInstanceOf(XmlSaxError);
+    expect(error.offset).toBe(7);
+    expect(error.line).toBe(0);
+    expect(error.column).toBe(0);
+  });
 });

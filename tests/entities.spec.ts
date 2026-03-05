@@ -72,4 +72,28 @@ describe("entities", () => {
 
     expect(error).toBeInstanceOf(XmlSaxError);
   });
+
+  it("throws on malformed numeric entities", () => {
+    const malformedHex = captureError(() => {
+      const parser = new XmlSaxParser();
+      parser.feed("<root>&#xZZ;</root>");
+      parser.close();
+    });
+
+    const missingDigits = captureError(() => {
+      const parser = new XmlSaxParser();
+      parser.feed("<root>&#;</root>");
+      parser.close();
+    });
+
+    const missingHexDigits = captureError(() => {
+      const parser = new XmlSaxParser();
+      parser.feed("<root>&#x;</root>");
+      parser.close();
+    });
+
+    expect(malformedHex).toBeInstanceOf(XmlSaxError);
+    expect(missingDigits).toBeInstanceOf(XmlSaxError);
+    expect(missingHexDigits).toBeInstanceOf(XmlSaxError);
+  });
 });

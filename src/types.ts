@@ -42,6 +42,7 @@ export interface ParserOptions {
   includeNamespaceAttributes?: boolean;
   allowDoctype?: boolean;
   coalesceText?: boolean;
+  trackPosition?: boolean;
   onOpenTag?: (tag: OpenTag) => void;
   onCloseTag?: (tag: CloseTag) => void;
   onText?: (text: string) => void;
