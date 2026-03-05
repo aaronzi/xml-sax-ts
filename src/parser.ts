@@ -35,7 +35,7 @@ const DEFAULT_OPTIONS: Required<
   xmlns: true,
   includeNamespaceAttributes: false,
   allowDoctype: true,
-  coalesceText: false,
+  coalesceText: true,
   trackPosition: true
 };
 

@@ -261,7 +261,7 @@ new XmlSaxParser(options?: ParserOptions)
 | `xmlns`                       | `boolean`  | `true`  | Enable namespace resolution                    |
 | `includeNamespaceAttributes`  | `boolean`  | `false` | Include `xmlns:*` attributes in tag output     |
 | `allowDoctype`                | `boolean`  | `true`  | Allow `<!DOCTYPE …>` declarations              |
-| `coalesceText`                | `boolean`  | `false` | Merge adjacent text callbacks into one event   |
+| `coalesceText`                | `boolean`  | `true`  | Merge adjacent text callbacks into one event   |
 | `trackPosition`               | `boolean`  | `true`  | Track line/column; disable for faster parsing  |
 | `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag     |
 | `onCloseTag`                  | `function` | —       | Called for each closing tag                    |
@@ -272,7 +272,7 @@ new XmlSaxParser(options?: ParserOptions)
 | `onDoctype`                   | `function` | —       | Called for DOCTYPE declarations                |
 | `onError`                     | `function` | —       | Called on parse errors                         |
 
-By default (`coalesceText: false`), streaming input can produce multiple consecutive `onText` callbacks that are logically adjacent. Enable `coalesceText: true` to receive one merged text callback per structural boundary.
+By default (`coalesceText: true`), adjacent text chunks are merged and emitted as one `onText` callback per structural boundary. Set `coalesceText: false` to receive text callbacks exactly as chunk boundaries are parsed.
 
 `trackPosition` controls line/column tracking for parser errors. When set to `false`, parsing is faster and `XmlSaxError` still reports `offset`, while `line` and `column` are set to `0`.
 

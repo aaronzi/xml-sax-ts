@@ -112,6 +112,20 @@ describe("XmlSaxParser", () => {
     expect(events).toEqual(["open:root", "open:a", "text:hi", "close:a", "close:root"]);
   });
 
+  it("coalesces adjacent text by default", () => {
+    const texts: string[] = [];
+    const parser = new XmlSaxParser({
+      onText: (text) => texts.push(text)
+    });
+
+    parser.feed("<root>a");
+    parser.feed("b");
+    parser.feed("c</root>");
+    parser.close();
+
+    expect(texts).toEqual(["abc"]);
+  });
+
   it("coalesces adjacent text but still flushes at tag boundaries", () => {
     const texts: string[] = [];
     const parser = new XmlSaxParser({
