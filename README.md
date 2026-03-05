@@ -239,7 +239,7 @@ Best fair-comparison read:
 
 These values are machine-dependent; rerun on your hardware for release-quality numbers.
 
-Current status: high-confidence comparable runs now show `xml-sax-ts` within 1% of `saxes` on `xmlns=false` and faster than `saxes` on `xmlns=true`.
+Current status for this environment: high-confidence comparable runs show `xml-sax-ts` at `0.990x` of `saxes` on `xmlns=false` and `1.368x` on `xmlns=true`.
 
 ## API
 

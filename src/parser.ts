@@ -63,7 +63,6 @@ NAME_CHAR_TABLE[45] = 1;
 NAME_CHAR_TABLE[46] = 1;
 
 export class XmlSaxParser {
-  private options: ParserOptions;
   private readonly xmlns: boolean;
   private readonly includeNamespaceAttributes: boolean;
   private readonly allowDoctype: boolean;
@@ -93,20 +92,20 @@ export class XmlSaxParser {
   private pendingText = "";
 
   constructor(options: ParserOptions = {}) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
-    this.xmlns = this.options.xmlns ?? true;
-    this.includeNamespaceAttributes = this.options.includeNamespaceAttributes ?? false;
-    this.allowDoctype = this.options.allowDoctype ?? true;
-    this.coalesceText = this.options.coalesceText ?? false;
-    this.trackPosition = this.options.trackPosition ?? true;
-    this.onOpenTag = this.options.onOpenTag;
-    this.onCloseTag = this.options.onCloseTag;
-    this.onText = this.options.onText;
-    this.onCdata = this.options.onCdata;
-    this.onComment = this.options.onComment;
-    this.onProcessingInstruction = this.options.onProcessingInstruction;
-    this.onDoctype = this.options.onDoctype;
-    this.onError = this.options.onError;
+    const resolved = { ...DEFAULT_OPTIONS, ...options };
+    this.xmlns = resolved.xmlns;
+    this.includeNamespaceAttributes = resolved.includeNamespaceAttributes;
+    this.allowDoctype = resolved.allowDoctype;
+    this.coalesceText = resolved.coalesceText;
+    this.trackPosition = resolved.trackPosition;
+    this.onOpenTag = resolved.onOpenTag;
+    this.onCloseTag = resolved.onCloseTag;
+    this.onText = resolved.onText;
+    this.onCdata = resolved.onCdata;
+    this.onComment = resolved.onComment;
+    this.onProcessingInstruction = resolved.onProcessingInstruction;
+    this.onDoctype = resolved.onDoctype;
+    this.onError = resolved.onError;
   }
 
   feed(chunk: string): void {
@@ -546,19 +545,6 @@ export class XmlSaxParser {
       prefix,
       local,
       uri
-    };
-  }
-
-  private _resolveNameNoXmlns(rawName: string): ResolvedName {
-    const split = rawName.indexOf(":");
-    if (split === -1) {
-      return { name: rawName, prefix: "", local: rawName, uri: "" };
-    }
-    return {
-      name: rawName,
-      prefix: rawName.slice(0, split),
-      local: rawName.slice(split + 1),
-      uri: ""
     };
   }
 
