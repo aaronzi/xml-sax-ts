@@ -30,6 +30,33 @@ describe("streaming behavior", () => {
     expect(texts.join("")).toBe("Hi & there");
   });
 
+  it("can coalesce chunked text events", () => {
+    const texts: string[] = [];
+    const parser = new XmlSaxParser({
+      coalesceText: true,
+      onText: (text) => texts.push(text)
+    });
+
+    parser.feed("<root>Hi &amp");
+    parser.feed("; there</root>");
+    parser.close();
+
+    expect(texts).toEqual(["Hi & there"]);
+  });
+
+  it("keeps chunked text split by default", () => {
+    const texts: string[] = [];
+    const parser = new XmlSaxParser({
+      onText: (text) => texts.push(text)
+    });
+
+    parser.feed("<root>Hi &amp");
+    parser.feed("; there</root>");
+    parser.close();
+
+    expect(texts).toEqual(["Hi ", "& there"]);
+  });
+
   it("matches single-feed events at byte boundaries", () => {
     const xml = "<root><a>ok</a><b/></root>";
     const single = collectEvents(xml);

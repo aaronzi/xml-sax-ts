@@ -147,6 +147,7 @@ new XmlSaxParser(options?: ParserOptions)
 | `xmlns`                       | `boolean`  | `true`  | Enable namespace resolution                    |
 | `includeNamespaceAttributes`  | `boolean`  | `false` | Include `xmlns:*` attributes in tag output     |
 | `allowDoctype`                | `boolean`  | `true`  | Allow `<!DOCTYPE …>` declarations              |
+| `coalesceText`                | `boolean`  | `false` | Merge adjacent text callbacks into one event   |
 | `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag     |
 | `onCloseTag`                  | `function` | —       | Called for each closing tag                    |
 | `onText`                      | `function` | —       | Called for text nodes                          |
@@ -155,6 +156,8 @@ new XmlSaxParser(options?: ParserOptions)
 | `onProcessingInstruction`     | `function` | —       | Called for processing instructions (`<?…?>`)   |
 | `onDoctype`                   | `function` | —       | Called for DOCTYPE declarations                |
 | `onError`                     | `function` | —       | Called on parse errors                         |
+
+By default (`coalesceText: false`), streaming input can produce multiple consecutive `onText` callbacks that are logically adjacent. Enable `coalesceText: true` to receive one merged text callback per structural boundary.
 
 ### `parseXmlString(xml, options?)`
 
@@ -198,7 +201,7 @@ Builds an `XmlNode` with `buildXmlNode` and serializes it with `serializeXml`.
 | `textKey`          | `string`                                                     | `"#text"` | Key used for text nodes                        |
 | `stripNamespaces`  | `boolean`                                                    | `false`   | Strip namespace prefixes from names            |
 | `arrayElements`    | `Set\<string\> \| (name: string, path: string[]) => boolean` | —         | Force specific elements to always be arrays    |
-| `rootName`         | `string`                                                     | —         | Root element name when object has multiple keys |
+| `rootName`         | `string`                                                     | —         | Root element name when object has multiple keys|
 
 ### `serializeXml(node, options?)`
 

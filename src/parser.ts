@@ -30,10 +30,13 @@ interface ResolvedName {
   uri: string;
 }
 
-const DEFAULT_OPTIONS: Required<Pick<ParserOptions, "xmlns" | "includeNamespaceAttributes" | "allowDoctype">> = {
+const DEFAULT_OPTIONS: Required<
+  Pick<ParserOptions, "xmlns" | "includeNamespaceAttributes" | "allowDoctype" | "coalesceText">
+> = {
   xmlns: true,
   includeNamespaceAttributes: false,
-  allowDoctype: true
+  allowDoctype: true,
+  coalesceText: false
 };
 
 const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
@@ -54,6 +57,7 @@ export class XmlSaxParser {
   ];
   private closed = false;
   private pendingCR = false;
+  private pendingText = "";
 
   constructor(options: ParserOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -76,6 +80,7 @@ export class XmlSaxParser {
     }
     this._parseBuffer(true);
     this._flushPendingCR();
+    this._flushTextBuffer();
     if (this.buffer.length > 0) {
       this._error("Unexpected end of input");
     }
@@ -141,6 +146,7 @@ export class XmlSaxParser {
         return null;
       }
       const comment = this.buffer.slice(start + 4, end);
+      this._flushTextBuffer();
       this.options.onComment?.(comment);
       return end + 3 - start;
     }
@@ -156,6 +162,7 @@ export class XmlSaxParser {
       const cdata = this.buffer.slice(start + 9, end);
       const normalized = this._normalizeText(cdata, false);
       if (normalized.length > 0) {
+        this._flushTextBuffer();
         this.options.onCdata?.(normalized);
       }
       return end + 3 - start;
@@ -174,6 +181,7 @@ export class XmlSaxParser {
       const target = split === -1 ? body : body.slice(0, split);
       const data = split === -1 ? "" : body.slice(split).trim();
       const pi: ProcessingInstruction = { target, body: data };
+      this._flushTextBuffer();
       this.options.onProcessingInstruction?.(pi);
       return end + 2 - start;
     }
@@ -191,6 +199,7 @@ export class XmlSaxParser {
       }
       const raw = this.buffer.slice(start + 9, end).trim();
       const doctype: Doctype = { raw };
+      this._flushTextBuffer();
       this.options.onDoctype?.(doctype);
       return end + 1 - start;
     }
@@ -226,6 +235,8 @@ export class XmlSaxParser {
   }
 
   private _handleStartTag(content: string): void {
+    this._flushTextBuffer();
+
     const trimmed = content.trim();
     const selfClosing = trimmed.endsWith("/");
     const body = selfClosing ? trimmed.slice(0, -1).trim() : trimmed;
@@ -289,6 +300,8 @@ export class XmlSaxParser {
   }
 
   private _handleCloseTag(rawName: string): void {
+    this._flushTextBuffer();
+
     const entry = this.elementStack.pop();
     const ns = this.nsStack.pop();
 
@@ -363,8 +376,24 @@ export class XmlSaxParser {
     }
     const decoded = decodeEntities(normalized, this.options.onError);
     if (decoded.length > 0) {
-      this.options.onText?.(decoded);
+      this._emitDecodedText(decoded);
     }
+  }
+
+  private _emitDecodedText(text: string): void {
+    if (!this.options.coalesceText) {
+      this.options.onText?.(text);
+      return;
+    }
+    this.pendingText += text;
+  }
+
+  private _flushTextBuffer(): void {
+    if (!this.options.coalesceText || this.pendingText.length === 0) {
+      return;
+    }
+    this.options.onText?.(this.pendingText);
+    this.pendingText = "";
   }
 
   private _resolveName(rawName: string, ns: NamespaceMap): ResolvedName {
@@ -589,7 +618,7 @@ export class XmlSaxParser {
       return;
     }
     this.pendingCR = false;
-    this.options.onText?.("\n");
+    this._emitDecodedText("\n");
   }
 
   private _error(message: string): never {

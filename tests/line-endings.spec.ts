@@ -29,4 +29,19 @@ describe("line ending normalization", () => {
 
     expect(value).toBe("x\ny\nz");
   });
+
+  it("normalizes CRLF and CR with coalesced text", () => {
+    const texts: string[] = [];
+    const parser = new XmlSaxParser({
+      coalesceText: true,
+      onText: (value) => texts.push(value)
+    });
+
+    parser.feed("<root>hi\r");
+    parser.feed("\nthere\r");
+    parser.feed("ok</root>");
+    parser.close();
+
+    expect(texts).toEqual(["hi\nthere\nok"]);
+  });
 });

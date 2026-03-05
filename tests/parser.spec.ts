@@ -78,6 +78,19 @@ describe("XmlSaxParser", () => {
 
     expect(events).toEqual(["open:root", "open:a", "text:hi", "close:a", "close:root"]);
   });
+
+  it("coalesces adjacent text but still flushes at tag boundaries", () => {
+    const texts: string[] = [];
+    const parser = new XmlSaxParser({
+      coalesceText: true,
+      onText: (text) => texts.push(text)
+    });
+
+    parser.feed("<root>a<b/>c</root>");
+    parser.close();
+
+    expect(texts).toEqual(["a", "c"]);
+  });
 });
 
 describe("parseXmlString", () => {

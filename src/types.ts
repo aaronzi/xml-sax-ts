@@ -41,6 +41,7 @@ export interface ParserOptions {
   xmlns?: boolean;
   includeNamespaceAttributes?: boolean;
   allowDoctype?: boolean;
+  coalesceText?: boolean;
   onOpenTag?: (tag: OpenTag) => void;
   onCloseTag?: (tag: CloseTag) => void;
   onText?: (text: string) => void;
