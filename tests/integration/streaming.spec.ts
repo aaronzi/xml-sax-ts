@@ -44,9 +44,10 @@ describe("streaming behavior", () => {
     expect(texts).toEqual(["Hi & there"]);
   });
 
-  it("keeps chunked text split by default", () => {
+  it("keeps chunked text split when coalescing is disabled", () => {
     const texts: string[] = [];
     const parser = new XmlSaxParser({
+      coalesceText: false,
       onText: (text) => texts.push(text)
     });
 
