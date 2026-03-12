@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { XmlSaxError, XmlSaxParser } from "../src/index";
+import { OpenTagToken, TextToken, XmlSaxError, XmlSaxParser } from "../src/index";
 import { getAttrValue } from "./helpers";
 
 function captureError(run: () => void): XmlSaxError {
@@ -16,27 +16,24 @@ describe("entities", () => {
     let text = "";
     let attr = "";
 
-    const parser = new XmlSaxParser({
-      onText: (value) => {
-        text += value;
-      },
-      onOpenTag: (tag) => {
-        attr = getAttrValue(tag, "a");
-      }
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root a='&lt; &amp; &#x41; &#65;'>&lt;&amp;&#x41;&#65;</root>");
+    for (const token of parser.feed("<root a='&lt; &amp; &#x41; &#65;'>&lt;&amp;&#x41;&#65;</root>")) {
+      if (token instanceof TextToken) {
+        text += token.text;
+      }
+      if (token instanceof OpenTagToken) {
+        attr = getAttrValue(token.tag, "a");
+      }
+    }
     parser.close();
 
     expect(text).toBe("<&AA");
     expect(attr).toBe("< & A A");
   });
 
-  it("throws on unknown entity and reports onError", () => {
-    const errors: Error[] = [];
-    const parser = new XmlSaxParser({
-      onError: (error) => errors.push(error)
-    });
+  it("throws on unknown entity", () => {
+    const parser = new XmlSaxParser();
 
     const error = captureError(() => {
       parser.feed("<root>&bogus;</root>");
@@ -44,7 +41,6 @@ describe("entities", () => {
     });
 
     expect(error).toBeInstanceOf(XmlSaxError);
-    expect(errors.length).toBe(1);
   });
 
   it("throws on invalid numeric entities", () => {

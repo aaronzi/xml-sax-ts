@@ -26,20 +26,38 @@ npm install xml-sax-ts
 
 ## Quick start
 
-### SAX streaming
+### Token streaming (sync)
 
 ```ts
-import { XmlSaxParser } from "xml-sax-ts";
+import { CloseTagToken, OpenTagToken, TextToken, XmlSaxParser } from "xml-sax-ts";
 
-const parser = new XmlSaxParser({
-  onOpenTag: (tag) => console.log("open", tag.name, tag.attributes),
-  onText: (text) => console.log("text", text),
-  onCloseTag: (tag) => console.log("close", tag.name),
-});
+const parser = new XmlSaxParser();
 
-parser.feed("<root>");
-parser.feed("Hello</root>");
+for (const token of parser.feed("<root>")) {
+  if (token instanceof OpenTagToken) console.log("open", token.tag.name);
+}
+for (const token of parser.feed("Hello</root>")) {
+  if (token instanceof TextToken) console.log("text", token.text);
+  if (token instanceof CloseTagToken) console.log("close", token.tag.name);
+}
 parser.close();
+```
+
+### Token streaming (async)
+
+```ts
+import { OpenTagToken, tokenizeXmlAsync } from "xml-sax-ts";
+
+async function* chunks(): AsyncGenerator<string> {
+  yield "<root><item>1</item>";
+  yield "<item>2</item></root>";
+}
+
+for await (const token of tokenizeXmlAsync(chunks())) {
+  if (token instanceof OpenTagToken) {
+    console.log(token.depth, token.path.join("/"));
+  }
+}
 ```
 
 ### Parse to tree
@@ -64,19 +82,25 @@ const obj = buildObject(root);
 ### Streaming object builder
 
 ```ts
-import { ObjectBuilder, XmlSaxParser } from "xml-sax-ts";
+import { CdataToken, CloseTagToken, OpenTagToken, TextToken, ObjectBuilder, XmlSaxParser } from "xml-sax-ts";
 
 const builder = new ObjectBuilder();
-const parser = new XmlSaxParser({
-  onOpenTag: builder.onOpenTag,
-  onText: builder.onText,
-  onCdata: builder.onCdata,
-  onCloseTag: builder.onCloseTag
-});
+const parser = new XmlSaxParser();
 
-parser.feed("<root><item>1</item>");
-parser.feed("<item>2</item></root>");
-parser.close();
+const consume = (token: unknown): void => {
+  if (
+    token instanceof OpenTagToken ||
+    token instanceof TextToken ||
+    token instanceof CdataToken ||
+    token instanceof CloseTagToken
+  ) {
+    builder.consume(token);
+  }
+};
+
+for (const token of parser.feed("<root><item>1</item>")) consume(token);
+for (const token of parser.feed("<item>2</item></root>")) consume(token);
+for (const token of parser.close()) consume(token);
 
 const obj = builder.getResult();
 // { item: ["1", "2"] }
@@ -140,6 +164,47 @@ Quick run (fewer rounds):
 ```bash
 npm run bench:quick
 ```
+
+### Large file streaming benchmark (2.5 GB)
+
+This benchmark parses a synthetic XML document containing 10 large text blobs of 250 MB each.
+The parser runs in true streaming mode and does not require building a full tree in memory.
+
+Run in Node:
+
+```bash
+npm run bench:large:node
+```
+
+Optional smaller smoke run:
+
+```bash
+npm run bench:large:node:sample
+```
+
+Environment variables for `bench:large:node`:
+
+- `LARGE_BLOB_SIZE_MB` (default `250`)
+- `LARGE_BLOB_COUNT` (default `10`)
+- `LARGE_XML_CHUNK_MB` (default `1`)
+- `LARGE_XML_XMLNS` (`1` enables namespaces; default `false`)
+- `LARGE_XML_COALESCE_TEXT` (`1` enables text coalescing; default `false`)
+- `LARGE_XML_REGENERATE=1` to rebuild the generated dataset
+- `LARGE_XML_FILE` to override the dataset path
+
+Browser benchmark page:
+
+1. Build the package: `npm run build`
+2. Serve the repository root with any static server
+3. Open `benchmarks/browser/large-bench.html`
+4. Select a large XML file and run the benchmark
+
+Latest large-file run (this machine):
+
+| Environment | Dataset | Parser settings | Elapsed | Throughput | Peak memory |
+| --- | --- | --- | ---: | ---: | ---: |
+| Node v24.7.0 (darwin arm64) | `10 x 250 MB` blobs (`2.44 GB` on disk) | `xmlns=false`, `coalesceText=false`, `trackPosition=false`, `1 MB` read chunks | `1.75 s` | `1,426.44 MB/s` | `217.8 MB RSS` |
+| Browser (local run) | `10 x 250 MB` blobs (`2.44 GB` on disk) | `xmlns=false`, `coalesceText=false`, `trackPosition=false`, `1024 KB` chunk size | `1.97 s` | `1,272.2 MB/s` | `63.1 MB JS heap (end)` |
 
 The benchmark now runs multiple rounds and reports median/mean/stddev for better comparability.
 
@@ -249,38 +314,64 @@ Current status for this environment: comparable runs show `xml-sax-ts` at `0.971
 new XmlSaxParser(options?: ParserOptions)
 ```
 
-| Method.       | Description                                |
-| ------------- | ------------------------------------------ |
-| `feed(chunk)` | Feed a string chunk to the parser          |
-| `close()`     | Signal end-of-input and validate open tags |
+| Method.               | Description                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `feed(chunk)`         | Feed one XML chunk and return parsed tokens for that chunk                          |
+| `close()`             | Finalize parsing, validate state, and return remaining tokens plus `EndToken`       |
+| `drainTokens()`       | Return and clear buffered tokens (usually empty if you consume `feed`/`close` return values) |
+| `[Symbol.iterator]()` | Iterate currently buffered tokens                                                    |
+| `iterateChunks(src)`  | Async iterator over an `Iterable<string>` or `AsyncIterable<string>` chunk source   |
 
 #### `ParserOptions`
 
-| Option                        | Type       | Default | Description                                    |
-| ----------------------------- | ---------- | ------- | ---------------------------------------------- |
-| `xmlns`                       | `boolean`  | `true`  | Enable namespace resolution                    |
-| `includeNamespaceAttributes`  | `boolean`  | `false` | Include `xmlns:*` attributes in tag output     |
-| `allowDoctype`                | `boolean`  | `true`  | Allow `<!DOCTYPE …>` declarations              |
-| `coalesceText`                | `boolean`  | `true`  | Merge adjacent text callbacks into one event   |
-| `trackPosition`               | `boolean`  | `true`  | Track line/column; disable for faster parsing  |
-| `onOpenTag`                   | `function` | —       | Called for each opening / self-closing tag     |
-| `onCloseTag`                  | `function` | —       | Called for each closing tag                    |
-| `onText`                      | `function` | —       | Called for text nodes                          |
-| `onCdata`                     | `function` | —       | Called for CDATA sections                      |
-| `onComment`                   | `function` | —       | Called for comments                            |
-| `onProcessingInstruction`     | `function` | —       | Called for processing instructions (`<?…?>`)   |
-| `onDoctype`                   | `function` | —       | Called for DOCTYPE declarations                |
-| `onError`                     | `function` | —       | Called on parse errors                         |
+| Option                       | Type      | Default | Description                                    |
+| ---------------------------- | --------- | ------- | ---------------------------------------------- |
+| `xmlns`                      | `boolean` | `true`  | Enable namespace resolution                    |
+| `includeNamespaceAttributes` | `boolean` | `false` | Include `xmlns:*` attributes in tag output     |
+| `allowDoctype`               | `boolean` | `true`  | Allow `<!DOCTYPE …>` declarations              |
+| `coalesceText`               | `boolean` | `true`  | Merge adjacent text tokens into a single token |
+| `trackPosition`              | `boolean` | `true`  | Track line/column; disable for faster parsing  |
 
-By default (`coalesceText: true`), adjacent text chunks are merged and emitted as one `onText` callback per structural boundary. Set `coalesceText: false` to receive text callbacks exactly as chunk boundaries are parsed.
+By default (`coalesceText: true`), adjacent text chunks are merged and emitted as one `TextToken` per structural boundary. Set `coalesceText: false` to keep chunk-level text tokenization.
 
 `trackPosition` controls line/column tracking for parser errors. When set to `false`, parsing is faster and `XmlSaxError` still reports `offset`, while `line` and `column` are set to `0`.
 
-Event payload note (breaking change): with `xmlns: false`, parser events now emit plain-mode tag shapes aligned with `saxes` performance semantics.
+Token payload note: with `xmlns: false`, `OpenTagToken` and `CloseTagToken` use plain-mode tag shapes aligned with `saxes` performance semantics.
 
-- `onOpenTag(tag).attributes` values are strings (not `XmlAttribute` objects)
-- `onOpenTag(tag)` and `onCloseTag(tag)` omit `prefix`, `local`, and `uri`
+- `OpenTagToken.tag.attributes` values are strings (not `XmlAttribute` objects)
+- `OpenTagToken.tag` and `CloseTagToken.tag` omit `prefix`, `local`, and `uri`
 - With `xmlns: true`, full namespace metadata remains present
+
+### Tokens
+
+Token classes:
+
+- `OpenTagToken`
+- `CloseTagToken`
+- `TextToken`
+- `CdataToken`
+- `CommentToken`
+- `ProcessingInstructionToken`
+- `DoctypeToken`
+- `EndToken`
+
+All token classes derive from `XmlToken` and include:
+
+- `kind`
+- `position` (`{ offset, line, column }` when `trackPosition` is enabled)
+
+`OpenTagToken` and `CloseTagToken` also include:
+
+- `depth`
+- `path`
+
+### `tokenizeXml(xml, options?)`
+
+Convenience helper for one-shot tokenization of a complete XML string.
+
+### `tokenizeXmlAsync(chunks, options?)`
+
+Convenience async generator for iterating tokens from an `Iterable<string>` or `AsyncIterable<string>` source.
 
 ### `parseXmlString(xml, options?)`
 
@@ -288,7 +379,7 @@ Convenience function that parses a complete XML string into an `XmlNode` tree us
 
 ### `TreeBuilder`
 
-Low-level tree builder. Attach its `onOpenTag`, `onText`, `onCdata`, and `onCloseTag` methods to a parser, then call `getRoot()` to retrieve the resulting `XmlNode`.
+Low-level tree builder. Consume parser tokens via `consume(token)` and call `getRoot()` to retrieve the resulting `XmlNode`.
 
 ### `buildObject(root, options?)`
 
@@ -296,7 +387,7 @@ Projects an `XmlNode` tree into a plain object. Attributes are prefixed (default
 
 ### `ObjectBuilder`
 
-Streaming builder that produces the same object shape as `buildObject` without building a full `XmlNode` tree. Attach its `onOpenTag`, `onText`, `onCdata`, and `onCloseTag` methods to the parser.
+Streaming builder that produces the same object shape as `buildObject` without building a full `XmlNode` tree. Consume parser tokens via `consume(token)`.
 
 #### `ObjectBuilderOptions`
 
@@ -345,7 +436,7 @@ Custom error class thrown on parse errors. Includes `offset`, `line`, and `colum
 
 ### Exported types
 
-`OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `ParserOptions` · `SerializeOptions` · `ObjectBuilderOptions` · `ArrayElementSelector` · `XmlObjectMap` · `XmlObjectValue` · `XmlBuilderOptions` · `XmlInputObject` · `XmlInputValue` · `ObjectToXmlOptions`
+`XmlTokenKind` · `XmlAnyToken` · `OpenTag` · `CloseTag` · `XmlAttribute` · `ProcessingInstruction` · `Doctype` · `XmlNode` · `XmlChild` · `XmlPosition` · `XmlChunkIterable` · `ParserOptions` · `SerializeOptions` · `ObjectBuilderOptions` · `ArrayElementSelector` · `XmlObjectMap` · `XmlObjectValue` · `XmlBuilderOptions` · `XmlInputObject` · `XmlInputValue` · `ObjectToXmlOptions`
 
 ## Features
 

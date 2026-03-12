@@ -1,7 +1,19 @@
-export { XmlSaxParser } from "./parser";
+export { XmlSaxParser, tokenizeXml, tokenizeXmlAsync } from "./parser";
 export { XmlSaxError } from "./errors";
 export { parseXmlString, TreeBuilder } from "./tree";
 export { serializeXml } from "./serializer";
+export {
+  CdataToken,
+  CloseTagToken,
+  CommentToken,
+  DoctypeToken,
+  EndToken,
+  OpenTagToken,
+  ProcessingInstructionToken,
+  TextToken,
+  XmlToken
+} from "./tokens";
+export type { XmlAnyToken, XmlTokenKind } from "./tokens";
 export {
   buildObject,
   buildXmlNode,
@@ -20,6 +32,7 @@ export type {
   ParserOptions,
   ProcessingInstruction,
   SerializeOptions,
+  XmlChunkIterable,
   XmlObjectMap,
   XmlObjectValue,
   XmlBuilderOptions,

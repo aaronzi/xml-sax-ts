@@ -43,15 +43,9 @@ export interface ParserOptions {
   allowDoctype?: boolean;
   coalesceText?: boolean;
   trackPosition?: boolean;
-  onOpenTag?: (tag: OpenTag) => void;
-  onCloseTag?: (tag: CloseTag) => void;
-  onText?: (text: string) => void;
-  onCdata?: (text: string) => void;
-  onComment?: (text: string) => void;
-  onProcessingInstruction?: (pi: ProcessingInstruction) => void;
-  onDoctype?: (doctype: Doctype) => void;
-  onError?: (error: Error) => void;
 }
+
+export type XmlChunkIterable = Iterable<string> | AsyncIterable<string>;
 
 export type XmlChild = XmlNode | string;
 

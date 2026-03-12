@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CdataToken,
+  CloseTagToken,
+  OpenTagToken,
   ObjectBuilder,
+  TextToken,
   XmlSaxParser,
   buildObject,
   buildXmlNode,
@@ -44,16 +48,22 @@ describe("buildObject", () => {
 describe("ObjectBuilder", () => {
   it("builds the same shape while streaming", () => {
     const builder = new ObjectBuilder();
-    const parser = new XmlSaxParser({
-      onOpenTag: builder.onOpenTag,
-      onText: builder.onText,
-      onCdata: builder.onCdata,
-      onCloseTag: builder.onCloseTag
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root><item>1</item>");
-    parser.feed("<item>2</item></root>");
-    parser.close();
+    const consume = (token: unknown): void => {
+      if (
+        token instanceof OpenTagToken ||
+        token instanceof TextToken ||
+        token instanceof CdataToken ||
+        token instanceof CloseTagToken
+      ) {
+        builder.consume(token);
+      }
+    };
+
+    for (const token of parser.feed("<root><item>1</item>")) consume(token);
+    for (const token of parser.feed("<item>2</item></root>")) consume(token);
+    for (const token of parser.close()) consume(token);
 
     expect(builder.getResult()).toEqual({ item: ["1", "2"] });
   });

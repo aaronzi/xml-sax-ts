@@ -1,16 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { XmlSaxParser } from "../../src/index";
+import {
+  CdataToken,
+  CloseTagToken,
+  CommentToken,
+  DoctypeToken,
+  OpenTagToken,
+  ProcessingInstructionToken,
+  TextToken,
+  XmlSaxParser
+} from "../../src/index";
 import { collectEvents } from "../helpers";
 
 describe("streaming behavior", () => {
   it("emits events during feed", () => {
     const events: string[] = [];
-    const parser = new XmlSaxParser({
-      onOpenTag: (tag) => events.push(`open:${tag.name}`),
-      onCloseTag: (tag) => events.push(`close:${tag.name}`)
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root><a>");
+    for (const token of parser.feed("<root><a>")) {
+      if (token instanceof OpenTagToken) {
+        events.push(`open:${token.tag.name}`);
+      }
+      if (token instanceof CloseTagToken) {
+        events.push(`close:${token.tag.name}`);
+      }
+    }
     expect(events).toEqual(["open:root", "open:a"]);
 
     parser.feed("ok</a></root>");
@@ -19,41 +32,51 @@ describe("streaming behavior", () => {
 
   it("handles entities across chunk boundaries", () => {
     const texts: string[] = [];
-    const parser = new XmlSaxParser({
-      onText: (text) => texts.push(text)
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root>Hi &amp");
-    parser.feed("; there</root>");
-    parser.close();
+    for (const token of parser.feed("<root>Hi &amp")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("; there</root>")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.close()) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
 
     expect(texts.join("")).toBe("Hi & there");
   });
 
   it("can coalesce chunked text events", () => {
     const texts: string[] = [];
-    const parser = new XmlSaxParser({
-      coalesceText: true,
-      onText: (text) => texts.push(text)
-    });
+    const parser = new XmlSaxParser({ coalesceText: true });
 
-    parser.feed("<root>Hi &amp");
-    parser.feed("; there</root>");
-    parser.close();
+    for (const token of parser.feed("<root>Hi &amp")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("; there</root>")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.close()) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
 
     expect(texts).toEqual(["Hi & there"]);
   });
 
   it("keeps chunked text split when coalescing is disabled", () => {
     const texts: string[] = [];
-    const parser = new XmlSaxParser({
-      coalesceText: false,
-      onText: (text) => texts.push(text)
-    });
+    const parser = new XmlSaxParser({ coalesceText: false });
 
-    parser.feed("<root>Hi &amp");
-    parser.feed("; there</root>");
-    parser.close();
+    for (const token of parser.feed("<root>Hi &amp")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("; there</root>")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.close()) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
 
     expect(texts).toEqual(["Hi ", "& there"]);
   });
@@ -67,14 +90,7 @@ describe("streaming behavior", () => {
 
   it("handles chunked markup sections", () => {
     const events: string[] = [];
-    const parser = new XmlSaxParser({
-      onComment: (text) => events.push(`comment:${text}`),
-      onCdata: (text) => events.push(`cdata:${text}`),
-      onProcessingInstruction: (pi) => events.push(`pi:${pi.target}:${pi.body}`),
-      onDoctype: (dt) => events.push(`doctype:${dt.raw}`),
-      onOpenTag: (tag) => events.push(`open:${tag.name}`),
-      onCloseTag: (tag) => events.push(`close:${tag.name}`)
-    });
+    const parser = new XmlSaxParser();
 
     const chunks = [
       "<?",
@@ -87,7 +103,16 @@ describe("streaming behavior", () => {
     ];
 
     for (const chunk of chunks) {
-      parser.feed(chunk);
+      for (const token of parser.feed(chunk)) {
+        if (token instanceof CommentToken) events.push(`comment:${token.text}`);
+        if (token instanceof CdataToken) events.push(`cdata:${token.text}`);
+        if (token instanceof ProcessingInstructionToken) {
+          events.push(`pi:${token.processingInstruction.target}:${token.processingInstruction.body}`);
+        }
+        if (token instanceof DoctypeToken) events.push(`doctype:${token.doctype.raw}`);
+        if (token instanceof OpenTagToken) events.push(`open:${token.tag.name}`);
+        if (token instanceof CloseTagToken) events.push(`close:${token.tag.name}`);
+      }
     }
     parser.close();
 

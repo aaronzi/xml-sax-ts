@@ -1,11 +1,12 @@
 import { XmlSaxParser } from "./parser";
+import { CdataToken, CloseTagToken, OpenTagToken, TextToken } from "./tokens";
 import type { ParserOptions, XmlNode } from "./types";
 
 export class TreeBuilder {
   private stack: XmlNode[] = [];
   private root: XmlNode | null = null;
 
-  onOpenTag = (tag: { name: string; attributes: Record<string, { value: string } | string> }): void => {
+  onOpenTag(tag: { name: string; attributes: Record<string, { value: string } | string> }): void {
     const node: XmlNode = {
       name: tag.name,
       attributes: Object.fromEntries(
@@ -22,9 +23,9 @@ export class TreeBuilder {
     }
 
     this.stack.push(node);
-  };
+  }
 
-  onText = (text: string): void => {
+  onText(text: string): void {
     if (!this.stack.length) {
       return;
     }
@@ -40,15 +41,31 @@ export class TreeBuilder {
       children.push(text);
     }
     node.children = children;
-  };
+  }
 
-  onCdata = (text: string): void => {
+  onCdata(text: string): void {
     this.onText(text);
-  };
+  }
 
-  onCloseTag = (): void => {
+  onCloseTag(): void {
     this.stack.pop();
-  };
+  }
+
+  consume(token: OpenTagToken | TextToken | CdataToken | CloseTagToken): void {
+    if (token instanceof OpenTagToken) {
+      this.onOpenTag(token.tag);
+      return;
+    }
+    if (token instanceof TextToken) {
+      this.onText(token.text);
+      return;
+    }
+    if (token instanceof CdataToken) {
+      this.onCdata(token.text);
+      return;
+    }
+    this.onCloseTag();
+  }
 
   getRoot(): XmlNode {
     if (!this.root) {
@@ -60,15 +77,26 @@ export class TreeBuilder {
 
 export function parseXmlString(xml: string, options: ParserOptions = {}): XmlNode {
   const builder = new TreeBuilder();
-  const parser = new XmlSaxParser({
-    ...options,
-    onOpenTag: builder.onOpenTag,
-    onText: builder.onText,
-    onCdata: builder.onCdata,
-    onCloseTag: builder.onCloseTag
-  });
-
-  parser.feed(xml);
-  parser.close();
+  const parser = new XmlSaxParser(options);
+  for (const token of parser.feed(xml)) {
+    if (
+      token instanceof OpenTagToken ||
+      token instanceof TextToken ||
+      token instanceof CdataToken ||
+      token instanceof CloseTagToken
+    ) {
+      builder.consume(token);
+    }
+  }
+  for (const token of parser.close()) {
+    if (
+      token instanceof OpenTagToken ||
+      token instanceof TextToken ||
+      token instanceof CdataToken ||
+      token instanceof CloseTagToken
+    ) {
+      builder.consume(token);
+    }
+  }
   return builder.getRoot();
 }

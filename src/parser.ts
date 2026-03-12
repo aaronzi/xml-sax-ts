@@ -1,13 +1,25 @@
 import { assert } from "./assert";
 import { decodeEntities, splitTextForEntities } from "./entities";
 import { XmlSaxError } from "./errors";
+import {
+  CdataToken,
+  CloseTagToken,
+  CommentToken,
+  DoctypeToken,
+  EndToken,
+  OpenTagToken,
+  ProcessingInstructionToken,
+  TextToken,
+  type XmlAnyToken
+} from "./tokens";
 import type {
   CloseTag,
   Doctype,
   OpenTag,
   ParserOptions,
   ProcessingInstruction,
-  XmlAttribute
+  XmlAttribute,
+  XmlPosition
 } from "./types";
 
 type NamespaceMap = Record<string, string>;
@@ -70,18 +82,12 @@ export class XmlSaxParser {
   private readonly allowDoctype: boolean;
   private readonly coalesceText: boolean;
   private readonly trackPosition: boolean;
-  private readonly onOpenTag: ((tag: OpenTag) => void) | undefined;
-  private readonly onCloseTag: ((tag: CloseTag) => void) | undefined;
-  private readonly onText: ((text: string) => void) | undefined;
-  private readonly onCdata: ((text: string) => void) | undefined;
-  private readonly onComment: ((text: string) => void) | undefined;
-  private readonly onProcessingInstruction: ((pi: ProcessingInstruction) => void) | undefined;
-  private readonly onDoctype: ((doctype: Doctype) => void) | undefined;
-  private readonly onError: ((error: Error) => void) | undefined;
   private buffer = "";
   private offset = 0;
   private line = 1;
   private column = 1;
+  private readonly pathStack: string[] = [];
+  private readonly tokenQueue: XmlAnyToken[] = [];
   private elementStack: StackEntry[] = [];
   private nsStack: NamespaceMap[] = [
     Object.assign(Object.create(null) as NamespaceMap, {
@@ -101,30 +107,23 @@ export class XmlSaxParser {
     this.allowDoctype = resolved.allowDoctype;
     this.coalesceText = resolved.coalesceText;
     this.trackPosition = resolved.trackPosition;
-    this.onOpenTag = resolved.onOpenTag;
-    this.onCloseTag = resolved.onCloseTag;
-    this.onText = resolved.onText;
-    this.onCdata = resolved.onCdata;
-    this.onComment = resolved.onComment;
-    this.onProcessingInstruction = resolved.onProcessingInstruction;
-    this.onDoctype = resolved.onDoctype;
-    this.onError = resolved.onError;
   }
 
-  feed(chunk: string): void {
+  feed(chunk: string): XmlAnyToken[] {
     if (this.closed) {
       this._error("Parser is closed");
     }
     if (!chunk) {
-      return;
+      return this.drainTokens();
     }
     this.buffer += chunk;
     this._parseBuffer(false);
+    return this.drainTokens();
   }
 
-  close(): void {
+  close(): XmlAnyToken[] {
     if (this.closed) {
-      return;
+      return this.drainTokens();
     }
     this._parseBuffer(true);
     this._flushPendingCR();
@@ -136,6 +135,33 @@ export class XmlSaxParser {
       this._error("Unclosed tag(s) remaining");
     }
     this.closed = true;
+    this._pushToken(new EndToken(this._position()));
+    return this.drainTokens();
+  }
+
+  drainTokens(): XmlAnyToken[] {
+    if (this.tokenQueue.length === 0) {
+      return [];
+    }
+    return this.tokenQueue.splice(0, this.tokenQueue.length);
+  }
+
+  *[Symbol.iterator](): IterableIterator<XmlAnyToken> {
+    while (this.tokenQueue.length > 0) {
+      const token = this.tokenQueue.shift();
+      if (token) {
+        yield token;
+      }
+    }
+  }
+
+  async *iterateChunks(chunks: Iterable<string> | AsyncIterable<string>): AsyncGenerator<XmlAnyToken> {
+    for await (const chunk of chunks) {
+      this.feed(chunk);
+      yield* this;
+    }
+    this.close();
+    yield* this;
   }
 
   private _parseBuffer(final: boolean): void {
@@ -209,7 +235,7 @@ export class XmlSaxParser {
       const data = split === -1 ? "" : body.slice(split).trim();
       const pi: ProcessingInstruction = { target, body: data };
       this._flushTextBuffer();
-      this.onProcessingInstruction?.(pi);
+      this._pushToken(new ProcessingInstructionToken(pi, this._position()));
       return end + 2 - start;
     }
 
@@ -226,7 +252,7 @@ export class XmlSaxParser {
         }
         const comment = this.buffer.slice(start + 4, end);
         this._flushTextBuffer();
-        this.onComment?.(comment);
+        this._pushToken(new CommentToken(comment, this._position()));
         return end + 3 - start;
       }
 
@@ -242,7 +268,7 @@ export class XmlSaxParser {
         const normalized = this._normalizeText(cdata, false);
         if (normalized.length > 0) {
           this._flushTextBuffer();
-          this.onCdata?.(normalized);
+          this._pushToken(new CdataToken(normalized, this._position()));
         }
         return end + 3 - start;
       }
@@ -261,7 +287,7 @@ export class XmlSaxParser {
         const raw = this.buffer.slice(start + 9, end).trim();
         const doctype: Doctype = { raw };
         this._flushTextBuffer();
-        this.onDoctype?.(doctype);
+        this._pushToken(new DoctypeToken(doctype, this._position()));
         return end + 1 - start;
       }
     }
@@ -321,10 +347,12 @@ export class XmlSaxParser {
         isSelfClosing: selfClosing
       };
 
-      this.onOpenTag?.(tag);
+      const openPath = Object.freeze([...this.pathStack, plainName]);
+      const depth = openPath.length;
+      this._pushToken(new OpenTagToken(tag, depth, openPath, this._position()));
 
       if (selfClosing) {
-        this.onCloseTag?.({ name: plainName });
+        this._pushToken(new CloseTagToken({ name: plainName }, depth, openPath, this._position()));
         return;
       }
 
@@ -332,6 +360,7 @@ export class XmlSaxParser {
         rawName: parsed.name,
         closeTag: { name: plainName }
       });
+      this.pathStack.push(plainName);
       return;
     }
 
@@ -379,15 +408,24 @@ export class XmlSaxParser {
       isSelfClosing: selfClosing
     };
 
-    this.onOpenTag?.(tag);
+    const openPath = Object.freeze([...this.pathStack, resolvedName.name]);
+    const depth = openPath.length;
+    this._pushToken(new OpenTagToken(tag, depth, openPath, this._position()));
 
     if (selfClosing) {
-      this.onCloseTag?.({
-        name: resolvedName.name,
-        prefix: resolvedName.prefix,
-        local: resolvedName.local,
-        uri: resolvedName.uri
-      });
+      this._pushToken(
+        new CloseTagToken(
+          {
+            name: resolvedName.name,
+            prefix: resolvedName.prefix,
+            local: resolvedName.local,
+            uri: resolvedName.uri
+          },
+          depth,
+          openPath,
+          this._position()
+        )
+      );
       return;
     }
 
@@ -400,6 +438,7 @@ export class XmlSaxParser {
         uri: resolvedName.uri
       }
     });
+    this.pathStack.push(resolvedName.name);
     this.nsStack.push(ns);
   }
 
@@ -457,7 +496,7 @@ export class XmlSaxParser {
 
       const rawValue = this.buffer.slice(i, valueEnd);
       const normalized = rawValue.includes("\r") ? rawValue.replace(CRLF_RE, "\n") : rawValue;
-      const value = !normalized.includes("&") ? normalized : decodeEntities(normalized, this.onError);
+      const value = !normalized.includes("&") ? normalized : decodeEntities(normalized);
       attributes.push({ name: attrName.name, value });
       i = valueEnd + 1;
     }
@@ -479,7 +518,12 @@ export class XmlSaxParser {
       this._error(`Mismatched closing tag: expected </${entry.rawName}>`);
     }
 
-    this.onCloseTag?.(entry.closeTag);
+    const closePath = Object.freeze([...this.pathStack]);
+    const depth = closePath.length;
+    if (depth > 0) {
+      this.pathStack.pop();
+    }
+    this._pushToken(new CloseTagToken(entry.closeTag, depth, closePath, this._position()));
   }
 
   private _emitText(text: string, allowPendingCR: boolean): void {
@@ -493,7 +537,7 @@ export class XmlSaxParser {
       return;
     }
 
-    const decoded = decodeEntities(normalized, this.onError);
+    const decoded = decodeEntities(normalized);
     if (decoded.length > 0) {
       this._emitDecodedText(decoded);
     }
@@ -501,7 +545,7 @@ export class XmlSaxParser {
 
   private _emitDecodedText(text: string): void {
     if (!this.coalesceText) {
-      this.onText?.(text);
+      this._pushToken(new TextToken(text, this._position()));
       return;
     }
     this.pendingTextParts.push(text);
@@ -514,7 +558,7 @@ export class XmlSaxParser {
     const first = this.pendingTextParts[0];
     const text = this.pendingTextParts.length === 1 && first !== undefined ? first : this.pendingTextParts.join("");
     this.pendingTextParts.length = 0;
-    this.onText?.(text);
+    this._pushToken(new TextToken(text, this._position()));
   }
 
   private _resolveName(rawName: string, ns: NamespaceMap): ResolvedName {
@@ -794,7 +838,32 @@ export class XmlSaxParser {
     const line = this.trackPosition ? this.line : 0;
     const column = this.trackPosition ? this.column : 0;
     const error = new XmlSaxError(message, this.offset, line, column);
-    this.onError?.(error);
     throw error;
   }
+
+  private _position(): XmlPosition {
+    return {
+      offset: this.offset,
+      line: this.trackPosition ? this.line : 0,
+      column: this.trackPosition ? this.column : 0
+    };
+  }
+
+  private _pushToken(token: XmlAnyToken): void {
+    this.tokenQueue.push(token);
+  }
+}
+
+export function tokenizeXml(xml: string, options: ParserOptions = {}): XmlAnyToken[] {
+  const parser = new XmlSaxParser(options);
+  parser.feed(xml);
+  return parser.close();
+}
+
+export async function* tokenizeXmlAsync(
+  chunks: Iterable<string> | AsyncIterable<string>,
+  options: ParserOptions = {}
+): AsyncGenerator<XmlAnyToken> {
+  const parser = new XmlSaxParser(options);
+  yield* parser.iterateChunks(chunks);
 }

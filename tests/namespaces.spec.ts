@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { XmlSaxError, XmlSaxParser } from "../src/index";
+import { OpenTagToken, XmlSaxError, XmlSaxParser } from "../src/index";
 import { getAttrUri } from "./helpers";
 
 const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
@@ -19,18 +19,19 @@ describe("namespaces", () => {
     let rootAttrUri = "";
     let prefixedAttrUri = "";
 
-    const parser = new XmlSaxParser({
-      xmlns: true,
-      onOpenTag: (tag) => {
-        seen.push({ name: tag.name, uri: tag.uri });
-        if (tag.name === "root") {
-          rootAttrUri = getAttrUri(tag, "a");
-          prefixedAttrUri = getAttrUri(tag, "p:b");
-        }
-      }
-    });
+    const parser = new XmlSaxParser({ xmlns: true });
 
-    parser.feed("<root xmlns='urn:root' xmlns:p='urn:p' a='1' p:b='2'><child xmlns=''><inner/></child></root>");
+    for (const token of parser.feed("<root xmlns='urn:root' xmlns:p='urn:p' a='1' p:b='2'><child xmlns=''><inner/></child></root>")) {
+      if (!(token instanceof OpenTagToken)) {
+        continue;
+      }
+      const tag = token.tag;
+      seen.push({ name: tag.name, uri: tag.uri ?? "" });
+      if (tag.name === "root") {
+        rootAttrUri = getAttrUri(tag, "a");
+        prefixedAttrUri = getAttrUri(tag, "p:b");
+      }
+    }
     parser.close();
 
     expect(seen).toEqual([
@@ -44,15 +45,13 @@ describe("namespaces", () => {
 
   it("includes xmlns attributes when requested", () => {
     let attrs: string[] = [];
-    const parser = new XmlSaxParser({
-      xmlns: true,
-      includeNamespaceAttributes: true,
-      onOpenTag: (tag) => {
-        attrs = Object.keys(tag.attributes);
-      }
-    });
+    const parser = new XmlSaxParser({ xmlns: true, includeNamespaceAttributes: true });
 
-    parser.feed("<root xmlns='urn:root' xmlns:p='urn:p'/>");
+    for (const token of parser.feed("<root xmlns='urn:root' xmlns:p='urn:p'/>")) {
+      if (token instanceof OpenTagToken) {
+        attrs = Object.keys(token.tag.attributes);
+      }
+    }
     parser.close();
 
     expect(attrs).toContain("xmlns");
@@ -78,14 +77,13 @@ describe("namespaces", () => {
 
   it("supports implicit xml prefix", () => {
     let xmlLangUri = "";
-    const parser = new XmlSaxParser({
-      xmlns: true,
-      onOpenTag: (tag) => {
-        xmlLangUri = getAttrUri(tag, "xml:lang");
-      }
-    });
+    const parser = new XmlSaxParser({ xmlns: true });
 
-    parser.feed("<root xml:lang='en'/>");
+    for (const token of parser.feed("<root xml:lang='en'/>")) {
+      if (token instanceof OpenTagToken) {
+        xmlLangUri = getAttrUri(token.tag, "xml:lang");
+      }
+    }
     parser.close();
 
     expect(xmlLangUri).toBe(XML_NAMESPACE_URI);

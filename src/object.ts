@@ -1,4 +1,6 @@
 import { serializeXml } from "./serializer";
+import { CdataToken, OpenTagToken, TextToken } from "./tokens";
+import type { CloseTagToken } from "./tokens";
 import type {
   ObjectBuilderOptions,
   ObjectToXmlOptions,
@@ -94,7 +96,7 @@ export class ObjectBuilder {
     this.options = buildSettings(options);
   }
 
-  onOpenTag = (tag: OpenTag): void => {
+  onOpenTag(tag: OpenTag): void {
     const name = normalizeName(tag.name, this.options);
     const attributes = normalizeAttributes(tag.attributes, this.options);
     const state: ElementState = {
@@ -107,9 +109,9 @@ export class ObjectBuilder {
     this.rootName ??= name;
 
     this.stack.push(state);
-  };
+  }
 
-  onText = (text: string): void => {
+  onText(text: string): void {
     if (!text) {
       return;
     }
@@ -118,13 +120,13 @@ export class ObjectBuilder {
       return;
     }
     current.textParts.push(text);
-  };
+  }
 
-  onCdata = (text: string): void => {
+  onCdata(text: string): void {
     this.onText(text);
-  };
+  }
 
-  onCloseTag = (): void => {
+  onCloseTag(): void {
     const state = this.stack.pop();
     if (!state) {
       return;
@@ -140,7 +142,23 @@ export class ObjectBuilder {
 
     const path = this.stack.map((entry) => entry.name);
     addChild(parent.children, state.name, value, this.options, path);
-  };
+  }
+
+  consume(token: OpenTagToken | TextToken | CdataToken | CloseTagToken): void {
+    if (token instanceof OpenTagToken) {
+      this.onOpenTag(token.tag);
+      return;
+    }
+    if (token instanceof TextToken) {
+      this.onText(token.text);
+      return;
+    }
+    if (token instanceof CdataToken) {
+      this.onCdata(token.text);
+      return;
+    }
+    this.onCloseTag();
+  }
 
   getResult(): XmlObjectValue {
     if (this.root === null) {

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xml-sax-ts Large XML Browser Benchmark</title>
+    <style>
+      :root {
+        --bg: #f5f2ea;
+        --panel: #fffdf8;
+        --text: #1f1a14;
+        --muted: #6f6357;
+        --accent: #8d3f20;
+        --accent-soft: #f1dccf;
+        --border: #d7c3b3;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 10% 10%, #fbe7cf 0, transparent 35%),
+          radial-gradient(circle at 90% 0%, #f7d5ba 0, transparent 30%),
+          var(--bg);
+      }
+      main {
+        max-width: 980px;
+        margin: 48px auto;
+        padding: 0 20px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 18px;
+        box-shadow: 0 14px 40px rgba(24, 16, 8, 0.08);
+        padding: 24px;
+      }
+      h1 { margin: 0 0 8px; font-family: "Space Grotesk", "IBM Plex Sans", sans-serif; }
+      p { color: var(--muted); line-height: 1.5; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+      label { display: block; font-weight: 600; margin-bottom: 6px; }
+      input, select, button {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font: inherit;
+        background: #fff;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: transform 120ms ease, filter 120ms ease;
+      }
+      button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+      .results {
+        margin-top: 18px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: #fff;
+        padding: 14px;
+      }
+      code {
+        background: var(--accent-soft);
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+      .mono { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace; }
+      .row { margin: 8px 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Large XML Streaming Benchmark (Browser)</h1>
+        <p>
+          Select a large XML file (for example, 10 blobs of 250 MB each) and stream-parse it in the browser.
+          The parser reads via <code>File.stream()</code> and does not require loading the full file into memory.
+        </p>
+
+        <div class="grid">
+          <div>
+            <label for="file">XML file</label>
+            <input id="file" type="file" accept=".xml,text/xml,application/xml" />
+          </div>
+          <div>
+            <label for="chunk">Chunk size (KB)</label>
+            <input id="chunk" type="number" min="64" step="64" value="1024" />
+          </div>
+          <div>
+            <label for="xmlns">Namespace mode</label>
+            <select id="xmlns">
+              <option value="false" selected>xmlns: false</option>
+              <option value="true">xmlns: true</option>
+            </select>
+          </div>
+          <div>
+            <label for="coalesce">Coalesce text</label>
+            <select id="coalesce">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-top: 12px">
+          <div><button id="run">Run Benchmark</button></div>
+        </div>
+
+        <div class="results mono" id="results">
+          <div class="row">Status: idle</div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import { XmlSaxParser, OpenTagToken, CloseTagToken, TextToken } from "../../dist/index.js";
+
+      const fileInput = document.getElementById("file");
+      const chunkInput = document.getElementById("chunk");
+      const xmlnsInput = document.getElementById("xmlns");
+      const coalesceInput = document.getElementById("coalesce");
+      const runButton = document.getElementById("run");
+      const results = document.getElementById("results");
+
+      function format(value, digits = 2) {
+        return value.toLocaleString("en-US", { maximumFractionDigits: digits });
+      }
+
+      function write(lines) {
+        results.innerHTML = lines.map((line) => `<div class=\"row\">${line}</div>`).join("");
+      }
+
+      function consume(tokens, stats) {
+        for (const token of tokens) {
+          if (token instanceof OpenTagToken) {
+            stats.open += 1;
+          } else if (token instanceof CloseTagToken) {
+            stats.close += 1;
+          } else if (token instanceof TextToken) {
+            stats.textChars += token.text.length;
+          }
+        }
+      }
+
+      async function parseFile(file, options) {
+        const parser = new XmlSaxParser({
+          xmlns: options.xmlns,
+          coalesceText: options.coalesceText,
+          trackPosition: false
+        });
+
+        const stats = { open: 0, close: 0, textChars: 0 };
+        const decoder = new TextDecoder("utf-8");
+        let offset = 0;
+
+        const start = performance.now();
+
+        while (offset < file.size) {
+          const end = Math.min(offset + options.chunkBytes, file.size);
+          const arrayBuffer = await file.slice(offset, end).arrayBuffer();
+          const view = new Uint8Array(arrayBuffer);
+          const text = decoder.decode(view, { stream: true });
+          consume(parser.feed(text), stats);
+          offset = end;
+        }
+
+        const finalText = decoder.decode();
+        if (finalText) {
+          consume(parser.feed(finalText), stats);
+        }
+        consume(parser.close(), stats);
+
+        const elapsedMs = performance.now() - start;
+        return { elapsedMs, stats };
+      }
+
+      runButton.addEventListener("click", async () => {
+        const file = fileInput.files?.[0];
+        if (!file) {
+          write(["Status: choose an XML file first."]);
+          return;
+        }
+
+        const chunkKb = Number.parseInt(chunkInput.value, 10);
+        if (!Number.isFinite(chunkKb) || chunkKb <= 0) {
+          write(["Status: chunk size must be a positive number."]);
+          return;
+        }
+
+        runButton.disabled = true;
+        const options = {
+          chunkBytes: chunkKb * 1024,
+          xmlns: xmlnsInput.value === "true",
+          coalesceText: coalesceInput.value === "true"
+        };
+
+        write([
+          "Status: running...",
+          `File size: ${format(file.size / (1024 * 1024), 1)} MB`,
+          `Parser: xmlns=${String(options.xmlns)} coalesceText=${String(options.coalesceText)} trackPosition=false`,
+          `Chunk size: ${format(chunkKb, 0)} KB`
+        ]);
+
+        try {
+          const { elapsedMs, stats } = await parseFile(file, options);
+          const seconds = elapsedMs / 1000;
+          const throughput = file.size / (1024 * 1024) / seconds;
+          const heap = performance.memory
+            ? `${format(performance.memory.usedJSHeapSize / (1024 * 1024), 1)} MB`
+            : "n/a (not exposed by this browser)";
+
+          write([
+            "Status: done",
+            `Elapsed: ${format(seconds, 2)} s`,
+            `Throughput: ${format(throughput, 2)} MB/s`,
+            `Open tags: ${format(stats.open, 0)}`,
+            `Close tags: ${format(stats.close, 0)}`,
+            `Text chars: ${format(stats.textChars, 0)}`,
+            `JS heap (end): ${heap}`
+          ]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          write(["Status: failed", message]);
+        } finally {
+          runButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

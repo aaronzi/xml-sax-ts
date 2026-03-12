@@ -1,4 +1,13 @@
-import { XmlSaxParser } from "../src/index";
+import {
+  CdataToken,
+  CloseTagToken,
+  CommentToken,
+  DoctypeToken,
+  OpenTagToken,
+  ProcessingInstructionToken,
+  TextToken,
+  XmlSaxParser
+} from "../src/index";
 import type { OpenTag } from "../src/types";
 
 export function getAttrValue(tag: Pick<OpenTag, "attributes">, name: string): string {
@@ -19,7 +28,41 @@ export function getAttrUri(tag: Pick<OpenTag, "attributes">, name: string): stri
 
 export function collectEventsFromChunks(chunks: string[]): string[] {
   const events: string[] = [];
-  const pushText = (text: string): void => {
+  const parser = new XmlSaxParser();
+
+  for (const chunk of chunks) {
+    for (const token of parser.feed(chunk)) {
+      pushEvent(events, token);
+    }
+  }
+  for (const token of parser.close()) {
+    pushEvent(events, token);
+  }
+
+  return events;
+}
+
+export function collectTokensFromChunks(chunks: string[], xmlns = true): ReturnType<XmlSaxParser["drainTokens"]> {
+  const parser = new XmlSaxParser({ xmlns });
+  const tokens: ReturnType<XmlSaxParser["drainTokens"]> = [];
+  for (const chunk of chunks) {
+    tokens.push(...parser.feed(chunk));
+  }
+  tokens.push(...parser.close());
+  return tokens;
+}
+
+function pushEvent(events: string[], token: unknown): void {
+  if (token instanceof OpenTagToken) {
+    events.push(`open:${token.tag.name}`);
+    return;
+  }
+  if (token instanceof CloseTagToken) {
+    events.push(`close:${token.tag.name}`);
+    return;
+  }
+  if (token instanceof TextToken) {
+    const text = token.text;
     if (!text) {
       return;
     }
@@ -29,24 +72,23 @@ export function collectEventsFromChunks(chunks: string[]): string[] {
       return;
     }
     events.push(`text:${text}`);
-  };
-
-  const parser = new XmlSaxParser({
-    onOpenTag: (tag) => events.push(`open:${tag.name}`),
-    onCloseTag: (tag) => events.push(`close:${tag.name}`),
-    onText: pushText,
-    onCdata: (text) => events.push(`cdata:${text}`),
-    onProcessingInstruction: (pi) => events.push(`pi:${pi.target}:${pi.body}`),
-    onDoctype: (dt) => events.push(`doctype:${dt.raw}`),
-    onComment: (text) => events.push(`comment:${text}`)
-  });
-
-  for (const chunk of chunks) {
-    parser.feed(chunk);
+    return;
   }
-  parser.close();
-
-  return events;
+  if (token instanceof CdataToken) {
+    events.push(`cdata:${token.text}`);
+    return;
+  }
+  if (token instanceof ProcessingInstructionToken) {
+    events.push(`pi:${token.processingInstruction.target}:${token.processingInstruction.body}`);
+    return;
+  }
+  if (token instanceof DoctypeToken) {
+    events.push(`doctype:${token.doctype.raw}`);
+    return;
+  }
+  if (token instanceof CommentToken) {
+    events.push(`comment:${token.text}`);
+  }
 }
 
 export function collectEvents(xml: string, chunkSize?: number): string[] {

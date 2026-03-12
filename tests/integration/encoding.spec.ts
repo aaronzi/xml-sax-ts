@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { XmlSaxParser } from "../../src/index";
+import { ProcessingInstructionToken, TextToken, XmlSaxParser } from "../../src/index";
 
 function parseText(xml: string): { text: string; pi: string | null } {
   let text = "";
   let pi: string | null = null;
-  const parser = new XmlSaxParser({
-    onText: (value) => {
-      text += value;
-    },
-    onProcessingInstruction: (instruction) => {
-      if (instruction.target === "xml") {
-        pi = instruction.body;
-      }
-    }
-  });
+  const parser = new XmlSaxParser();
 
-  parser.feed(xml);
+  for (const token of parser.feed(xml)) {
+    if (token instanceof TextToken) {
+      text += token.text;
+    }
+    if (token instanceof ProcessingInstructionToken && token.processingInstruction.target === "xml") {
+      pi = token.processingInstruction.body;
+    }
+  }
   parser.close();
 
   return { text, pi };

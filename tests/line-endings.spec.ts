@@ -1,31 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { XmlSaxParser } from "../src/index";
+import { OpenTagToken, TextToken, XmlSaxParser } from "../src/index";
 import { getAttrValue } from "./helpers";
 
 describe("line ending normalization", () => {
   it("normalizes CRLF and CR in text across chunks", () => {
     const texts: string[] = [];
-    const parser = new XmlSaxParser({
-      onText: (value) => texts.push(value)
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root>hi\r");
-    parser.feed("\nthere\r");
-    parser.feed("ok</root>");
-    parser.close();
+    for (const token of parser.feed("<root>hi\r")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("\nthere\r")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("ok</root>")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.close()) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
 
     expect(texts.join("")).toBe("hi\nthere\nok");
   });
 
   it("normalizes line endings in attribute values", () => {
     let value = "";
-    const parser = new XmlSaxParser({
-      onOpenTag: (tag) => {
-        value = getAttrValue(tag, "a");
-      }
-    });
+    const parser = new XmlSaxParser();
 
-    parser.feed("<root a='x\r\ny\rz'/>");
+    for (const token of parser.feed("<root a='x\r\ny\rz'/>")) {
+      if (token instanceof OpenTagToken) {
+        value = getAttrValue(token.tag, "a");
+      }
+    }
     parser.close();
 
     expect(value).toBe("x\ny\nz");
@@ -33,15 +39,20 @@ describe("line ending normalization", () => {
 
   it("normalizes CRLF and CR with coalesced text", () => {
     const texts: string[] = [];
-    const parser = new XmlSaxParser({
-      coalesceText: true,
-      onText: (value) => texts.push(value)
-    });
+    const parser = new XmlSaxParser({ coalesceText: true });
 
-    parser.feed("<root>hi\r");
-    parser.feed("\nthere\r");
-    parser.feed("ok</root>");
-    parser.close();
+    for (const token of parser.feed("<root>hi\r")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("\nthere\r")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.feed("ok</root>")) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
+    for (const token of parser.close()) {
+      if (token instanceof TextToken) texts.push(token.text);
+    }
 
     expect(texts).toEqual(["hi\nthere\nok"]);
   });

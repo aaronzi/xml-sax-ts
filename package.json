@@ -35,6 +35,8 @@
     "build": "tsup",
     "bench": "npm run build && node benchmarks/run-bench.mjs",
     "bench:quick": "BENCH_ROUNDS=3 BENCH_MIN_MS=700 npm run bench",
+    "bench:large:node": "npm run build && node benchmarks/run-large-bench.mjs",
+    "bench:large:node:sample": "LARGE_BLOB_SIZE_MB=25 LARGE_BLOB_COUNT=10 npm run bench:large:node",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run tests/integration",
